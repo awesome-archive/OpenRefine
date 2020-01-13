@@ -985,7 +985,7 @@ SchemaAlignmentDialog._initField = function(inputContainer, mode, initialValue, 
       changedCallback();
     });
 
-    SchemaAlignmentDialog.setupStringInputValidation(input, /^\d{4}(-[0-1]\d(-[0-3]\d)?)?$/);
+    SchemaAlignmentDialog.setupStringInputValidation(input, /^((\d{4}(-[0-1]\d(-[0-3]\d)?)?)|TODAY)$/);
    } else if (mode === "globe-coordinate") {
      input.attr("placeholder", "lat,lon");
      var propagateValue = function(val) {
@@ -1283,7 +1283,7 @@ SchemaAlignmentDialog.preview = function() {
     $('.invalid-schema-warning').show();
     return;
   }
-  $.post(
+  Refine.postCSRF(
     "command/wikidata/preview-wikibase-schema?" + $.param({ project: theProject.id }),
     { schema: JSON.stringify(schema), engine: JSON.stringify(ui.browsingEngine.getJSON()) },
     function(data) {

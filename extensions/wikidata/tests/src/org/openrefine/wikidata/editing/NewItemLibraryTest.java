@@ -30,16 +30,16 @@ import java.util.Collections;
 
 import org.openrefine.wikidata.testing.JacksonSerializationTest;
 import org.openrefine.wikidata.testing.TestingData;
+import org.openrefine.wikidata.testing.WikidataRefineTest;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import com.google.refine.RefineTest;
 import com.google.refine.model.Cell;
 import com.google.refine.model.Project;
 import com.google.refine.model.Recon;
 import com.google.refine.model.recon.StandardReconConfig;
 
-public class NewItemLibraryTest extends RefineTest {
+public class NewItemLibraryTest extends WikidataRefineTest {
 
     private NewItemLibrary library;
 

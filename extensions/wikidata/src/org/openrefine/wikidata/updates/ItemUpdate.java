@@ -32,12 +32,10 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.jsoup.helper.Validate;
 import org.openrefine.wikidata.utils.StatementGroupJson;
-import org.wikidata.wdtk.datamodel.helpers.Datamodel;
 import org.wikidata.wdtk.datamodel.implementation.StatementGroupImpl;
 import org.wikidata.wdtk.datamodel.interfaces.EntityIdValue;
 import org.wikidata.wdtk.datamodel.interfaces.ItemIdValue;
@@ -407,12 +405,20 @@ public class ItemUpdate {
         builder.append("<Update on ");
         builder.append(qid);
         if (!labels.isEmpty()) {
-            builder.append("\n  Labels: ");
+            builder.append("\n  Labels (override): ");
             builder.append(labels);
         }
+        if (!labelsIfNew.isEmpty()) {
+            builder.append("\n  Labels (if new): ");
+            builder.append(labelsIfNew);
+        }
         if (!descriptions.isEmpty()) {
-            builder.append("\n  Descriptions: ");
+            builder.append("\n  Descriptions (override): ");
             builder.append(descriptions);
+        }
+        if (!descriptionsIfNew.isEmpty()) {
+            builder.append("\n  Descriptions (if new): ");
+            builder.append(descriptionsIfNew);
         }
         if (!aliases.isEmpty()) {
             builder.append("\n  Aliases: ");

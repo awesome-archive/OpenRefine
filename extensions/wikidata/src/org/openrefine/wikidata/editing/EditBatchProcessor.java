@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.openrefine.wikidata.schema.entityvalues.ReconEntityIdValue;
+import org.openrefine.wikidata.schema.exceptions.NewItemNotCreatedYetException;
 import org.openrefine.wikidata.updates.ItemUpdate;
 import org.openrefine.wikidata.updates.scheduler.WikibaseAPIUpdateScheduler;
 import org.slf4j.Logger;
@@ -58,6 +59,7 @@ public class EditBatchProcessor {
     private NewItemLibrary library;
     private List<ItemUpdate> scheduled;
     private String summary;
+    private List<String> tags;
 
     private List<ItemUpdate> remainingUpdates;
     private List<ItemUpdate> currentBatch;
@@ -81,12 +83,14 @@ public class EditBatchProcessor {
      *            the library to use to keep track of new item creation
      * @param summary
      *            the summary to append to all edits
+     * @param tags
+     *            the list of tags to apply to all edits
      * @param batchSize
      *            the number of items that should be retrieved in one go from the
      *            API
      */
     public EditBatchProcessor(WikibaseDataFetcher fetcher, WikibaseDataEditor editor, List<ItemUpdate> updates,
-            NewItemLibrary library, String summary, int batchSize) {
+            NewItemLibrary library, String summary, List<String> tags, int batchSize) {
         this.fetcher = fetcher;
         this.editor = editor;
         editor.setEditAsBot(true); // this will not do anything if the user does not
@@ -98,6 +102,7 @@ public class EditBatchProcessor {
 
         this.library = library;
         this.summary = summary;
+        this.tags = tags;
         this.batchSize = batchSize;
 
         // Schedule the edit batch
@@ -128,7 +133,13 @@ public class EditBatchProcessor {
 
         // Rewrite mentions to new items
         ReconEntityRewriter rewriter = new ReconEntityRewriter(library, update.getItemId());
-        update = rewriter.rewrite(update);
+        try {
+        	update = rewriter.rewrite(update);
+        } catch (NewItemNotCreatedYetException e) {
+        	logger.warn("Failed to rewrite update on entity "+update.getItemId()+". Missing entity: "+e.getMissingEntity()+". Skipping update.");
+        	batchCursor++;
+        	return;
+        }
 
         try {
             // New item
@@ -142,8 +153,8 @@ public class EditBatchProcessor {
                         update.getAliases().stream().collect(Collectors.toList()), update.getAddedStatementGroups(),
                         Collections.emptyMap());
 
-                ItemDocument createdDoc = editor.createItemDocument(itemDocument, summary);
-                library.setQid(newCell.getReconInternalId(), createdDoc.getItemId().getId());
+                ItemDocument createdDoc = editor.createItemDocument(itemDocument, summary, tags);
+                library.setQid(newCell.getReconInternalId(), createdDoc.getEntityId().getId());
             } else {
                 // Existing item
                 ItemDocument currentDocument = (ItemDocument) currentDocs.get(update.getItemId().getId());
@@ -159,13 +170,15 @@ public class EditBatchProcessor {
                         update.getAliases().stream().collect(Collectors.toList()),
                         new ArrayList<MonolingualTextValue>(),
                         update.getAddedStatements().stream().collect(Collectors.toList()),
-                        update.getDeletedStatements().stream().collect(Collectors.toList()), summary);
+                        update.getDeletedStatements().stream().collect(Collectors.toList()),
+                        summary, tags);
             }
         } catch (MediaWikiApiErrorException e) {
             // TODO find a way to report these errors to the user in a nice way
-            e.printStackTrace();
+            logger.warn("MediaWiki error while editing [" + e.getErrorCode()
+            + "]: " + e.getErrorMessage());
         } catch (IOException e) {
-            e.printStackTrace();
+            logger.warn("IO error while editing: " + e.getMessage());
         }
 
         batchCursor++;
@@ -203,22 +216,29 @@ public class EditBatchProcessor {
         // Get the current documents for this batch of updates
         logger.info("Requesting documents");
         currentDocs = null;
-        int retries = 3;
+        int retries = 5;
+        int backoff = 2;
+        int sleepTime = 5000;
         // TODO: remove currentDocs.isEmpty() once https://github.com/Wikidata/Wikidata-Toolkit/issues/402 is solved
         while ((currentDocs == null || currentDocs.isEmpty()) && retries > 0) {
             try {
                 currentDocs = fetcher.getEntityDocuments(qidsToFetch);
             } catch (MediaWikiApiErrorException e) {
-                e.printStackTrace();
-                Thread.sleep(5000);
+                logger.warn("MediaWiki error while fetching documents to edit [" + e.getErrorCode()
+                                                + "]: " + e.getErrorMessage());
             } catch (IOException e) {
-				e.printStackTrace();
-				Thread.sleep(5000);
+                logger.warn("IO error while fetching documents to edit: " + e.getMessage());
 			}
             retries--;
+            sleepTime *= backoff;
+            if ((currentDocs == null || currentDocs.isEmpty()) && retries > 0) {
+                logger.warn("Retrying in " + sleepTime + " ms");
+                Thread.sleep(sleepTime);
+            }
         }
         if (currentDocs == null) {
-            throw new InterruptedException("Fetching current documents failed.");
+            logger.warn("Giving up on fetching documents to edit. Skipping "+remainingEdits()+" remaining edits.");
+            globalCursor = scheduled.size();
         }
         batchCursor = 0;
     }
