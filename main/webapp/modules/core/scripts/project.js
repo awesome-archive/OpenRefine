@@ -23,8 +23,8 @@ LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
 A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
 OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
 SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,           
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY           
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
 THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
@@ -32,30 +32,15 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 var theProject;
+var thePreferences;
 var ui = {};
 
-var lang = (navigator.language|| navigator.userLanguage).split("-")[0];
-var dictionary = "";
-$.ajax({
-	url : "command/core/load-language?",
-	type : "POST",
-	async : false,
-	data : {
-	  module : "core",
-//		lang : lang
-	},
-	success : function(data) {
-		dictionary = data['dictionary'];
-        lang = data['lang'];
-	}
-});
-$.i18n().load(dictionary, lang);
-$.i18n({ locale: lang });
-// End internationalization
+var Refine = {};
 
-var Refine = {
-  refineHelperService: "http://openrefine-helper.freebaseapps.com"
-};
+I18NUtil.init("core");
+
+Refine.wrapCSRF = CSRFUtil.wrapCSRF;
+Refine.postCSRF = CSRFUtil.postCSRF;
 
 Refine.reportException = function(e) {
   if (window.console) {
@@ -64,10 +49,16 @@ Refine.reportException = function(e) {
 };
 
 function resize() {
-  var leftPanelWidth = 300;
+  var leftPanelWidth = JSON.parse(Refine.getPreference("ui.browsing.facetsHistoryPanelWidth", 300));
+  if(typeof leftPanelWidth != "number" || leftPanelWidth < 200 || leftPanelWidth > 500) {
+    leftPanelWidth = 300;
+  }
+
   var width = $(window).width();
   var top = $("#header").outerHeight();
   var height = $(window).height() - top;
+
+  if (ui.leftPanelDiv.css('display') == "none") { leftPanelWidth = 0; }
 
   var leftPanelPaddings = ui.leftPanelDiv.outerHeight(true) - ui.leftPanelDiv.height();
   ui.leftPanelDiv
@@ -114,6 +105,9 @@ function resizeAll() {
   ui.processPanel.resize();
   ui.historyPanel.resize();
   ui.dataTableView.resize();
+  if (SchemaAlignment) {
+    SchemaAlignment.resize();
+  }
 }
 
 function initializeUI(uiState) {
@@ -122,7 +116,7 @@ function initializeUI(uiState) {
   $("#project-title").show();
   $("#project-controls").show();
   $("#body").show();
-  
+
   $("#or-proj-open").text($.i18n('core-project/open')+"...");
   $("#project-permalink-button").text($.i18n('core-project/permalink'));
   $("#project-name-button").attr("title",$.i18n('core-project/proj-name'));
@@ -131,10 +125,10 @@ function initializeUI(uiState) {
   $("#or-proj-starting").text($.i18n('core-project/starting')+"...");
   $("#or-proj-facFil").text($.i18n('core-project/facet-filter'));
   $("#or-proj-undoRedo").text($.i18n('core-project/undo-redo'));
-  $("#or-proj-ext").text($.i18n('core-project/extensions')+":");
+  $("#or-proj-ext").text($.i18n('core-project/extensions'));
 
-  $('#project-name-button').click(Refine._renameProject);
-  $('#project-permalink-button').mouseenter(function() {
+  $('#project-name-button').on('click',Refine._renameProject);
+  $('#project-permalink-button').on('mouseenter',function() {
     this.href = Refine.getPermanentLink();
   });
 
@@ -145,9 +139,19 @@ function initializeUI(uiState) {
   ui.extensionBar = new ExtensionBar(ui.extensionBarDiv); // construct the menu first so we can resize everything else
   ui.exporterManager = new ExporterManager($("#export-button"));
 
-  ui.leftPanelTabs.tabs({ selected: 0 });
+  ui.leftPanelTabs.tabs();
   resize();
   resizeTabs();
+
+  $('<a>').attr("id", "hide-left-panel-button")
+    .addClass("visibility-panel-button")
+    .on('click',function() { Refine._showHideLeftPanel(); })
+    .prependTo(ui.leftPanelTabs);
+
+  $('<a>').attr("id", "show-left-panel-button")
+    .addClass("visibility-panel-button")
+    .on('click',function() { Refine._showHideLeftPanel(); })
+    .prependTo(ui.toolPanelDiv);
 
   ui.summaryBar = new SummaryBar(ui.summaryBarDiv);
   ui.browsingEngine = new BrowsingEngine(ui.facetPanelDiv, uiState.facets || []);
@@ -155,16 +159,27 @@ function initializeUI(uiState) {
   ui.historyPanel = new HistoryPanel(ui.historyPanelDiv, ui.historyTabHeader);
   ui.dataTableView = new DataTableView(ui.viewPanelDiv);
 
-  ui.leftPanelTabs.bind('tabsactivate', function(event, tabs) {
-    tabs.newPanel.resize();
+  ui.leftPanelTabs.on('tabsactivate', function(event, tabs) {
+    tabs.newPanel.trigger('resize');
   });
 
-  $(window).bind("resize", resizeAll);
+  $(window).on("resize", resizeAll);
 
   if (uiState.facets) {
     Refine.update({ engineChanged: true });
   }
 }
+
+Refine._showHideLeftPanel = function() {
+  $('div#body').toggleClass("hide-left-panel");
+  resizeAll();
+};
+
+Refine.showLeftPanel = function() {
+  $('div#body').removeClass("hide-left-panel");
+  if(ui.browsingEngine == undefined || ui.browsingEngine.resize == undefined) return;
+  resizeAll();
+};
 
 Refine.setTitle = function(status) {
   var title = theProject.metadata.name + " - OpenRefine";
@@ -190,12 +205,35 @@ Refine.reinitializeProjectData = function(f, fError) {
         $.getJSON(
           "command/core/get-models?" + $.param({ project: theProject.id }), null,
           function(data) {
-            for (var n in data) {
-              if (data.hasOwnProperty(n)) {
-                theProject[n] = data[n];
+            if (data.status == "error") {
+              alert(data.message);
+              if (fError) {
+                fError();
               }
+            } else {
+              for (var n in data) {
+                if (data.hasOwnProperty(n)) {
+                  theProject[n] = data[n];
+                }
+              }
+              $.post(
+                "command/core/get-all-preferences", null,
+                function(preferences) {
+                  if (preferences.status == "error") {
+                    alert(preferences.message);
+                    if (fError) {
+                      fError();
+                    }
+                  } else {
+                    if (preferences != null) {
+                      thePreferences = preferences;
+                    }
+                    f();
+                  }
+                },
+                'json'
+              );
             }
-            f();
           },
           'json'
         );
@@ -205,31 +243,54 @@ Refine.reinitializeProjectData = function(f, fError) {
   );
 };
 
+Refine.getPreference = function(key, defaultValue) {
+  if(!thePreferences.hasOwnProperty(key)) { return defaultValue; }
+
+  return thePreferences[key];
+}
+
+Refine.setPreference = function(key, newValue) {
+  thePreferences[key] = newValue;
+
+  Refine.wrapCSRF(function(token) {
+    $.ajax({
+      async: false,
+      type: "POST",
+      url: "command/core/set-preference?" + $.param({ name: key }),
+      data: {
+        "value" : JSON.stringify(newValue),
+        csrf_token: token
+      },
+      success: function(data) { },
+      dataType: "json"
+    });
+  });
+}
+
 Refine._renameProject = function() {
   var name = window.prompt($.i18n('core-index/new-proj-name'), theProject.metadata.name);
   if (name === null) {
     return;
   }
 
-  name = $.trim(name);
+  name = jQueryTrim(name);
   if (theProject.metadata.name == name || name.length === 0) {
     return;
   }
 
-  $.ajax({
-    type: "POST",
-    url: "command/core/rename-project",
-    data: { "project" : theProject.id, "name" : name },
-    dataType: "json",
-    success: function (data) {
+  Refine.postCSRF(
+    "command/core/rename-project",
+    { "project" : theProject.id, "name" : name },
+    function (data) {
       if (data && typeof data.code != "undefined" && data.code == "ok") {
         theProject.metadata.name = name;
         Refine.setTitle();
       } else {
         alert($.i18n('core-index/error-rename')+" " + data.message);
       }
-    }
-  });
+    },
+    "json"
+  );
 };
 
 /*
@@ -279,7 +340,7 @@ Refine.createUpdateFunction = function(options, onFinallyDone) {
 /*
  * Registers a callback function to be called after each update.
  * This is provided for extensions which need to run some code when
- * the project is updated. This was introduced for the Wikidata 
+ * the project is updated. This was introduced for the Wikidata
  * extension as a means to avoid monkey-patching Refine's core
  * methods (which was the solution adopted for GOKb, as they had
  * no way to change Refine's code directly).
@@ -388,7 +449,7 @@ Refine.postProcess = function(moduleName, command, params, body, updateOptions, 
 
   Refine.setAjaxInProgress();
 
-  $.post(
+  Refine.postCSRF(
     "command/" + moduleName + "/" + command + "?" + $.param(params),
     body,
     onDone,

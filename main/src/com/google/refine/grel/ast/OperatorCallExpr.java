@@ -42,8 +42,9 @@ import com.google.refine.expr.ExpressionUtils;
  * An abstract syntax tree node encapsulating an operator call, such as "+".
  */
 public class OperatorCallExpr implements Evaluable {
+
     final protected Evaluable[] _args;
-    final protected String        _op;
+    final protected String _op;
 
     public OperatorCallExpr(Evaluable[] args, String op) {
         _args = args;
@@ -74,6 +75,9 @@ public class OperatorCallExpr implements Evaluable {
                     } else if ("*".equals(_op)) {
                         return n1 * n2;
                     } else if ("/".equals(_op)) {
+                        if (n2 == 0 && n1 == 0) {
+                            return Double.NaN;
+                        }
                         return n1 / n2;
                     } else if ("%".equals(_op)) {
                         return n1 % n2;
@@ -101,6 +105,9 @@ public class OperatorCallExpr implements Evaluable {
                     } else if ("*".equals(_op)) {
                         return n1 * n2;
                     } else if ("/".equals(_op)) {
+                        if (n2 == 0 && n1 == 0) {
+                            return Double.NaN;
+                        }
                         return n1 / n2;
                     } else if ("%".equals(_op)) {
                         return n1 % n2;

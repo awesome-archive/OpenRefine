@@ -35,73 +35,77 @@ package com.google.refine.expr.functions;
 
 import java.util.Properties;
 
-import com.google.refine.InterProjectModel.ProjectJoin;
+import com.google.refine.LookupCacheManager.ProjectLookup;
 import com.google.refine.ProjectManager;
 import com.google.refine.expr.EvalError;
 import com.google.refine.expr.WrappedCell;
 import com.google.refine.grel.ControlFunctionRegistry;
+import com.google.refine.grel.EvalErrorMessage;
 import com.google.refine.grel.Function;
+import com.google.refine.grel.FunctionDescription;
 import com.google.refine.model.Project;
 import com.google.refine.util.GetProjectIDException;
-import com.google.refine.util.JoinException;
+import com.google.refine.util.LookupException;
 
 public class Cross implements Function {
-    
+
+    public static final String INDEX_COLUMN_NAME = "_OpenRefine_Index_Column_Name_";
+
     @Override
     public Object call(Properties bindings, Object[] args) {
-        if (args.length == 3) {
+        if (1 <= args.length && args.length <= 3) {
             // 1st argument can take either value or cell(for backward compatibility)
             Object v = args[0];
-            Object toProjectName = args[1];
-            Object toColumnName = args[2]; 
-            Long toProjectID;
-            ProjectJoin join;           
-            
-            if (v != null && 
-                ( v instanceof String || v instanceof WrappedCell ) &&
-                toProjectName != null && toProjectName instanceof String &&
-                toColumnName != null && toColumnName instanceof String) {
+            // if 2nd argument is omitted or set to "", use the current project name
+            Object targetProjectName = "";
+            boolean isCurrentProject = false;
+            if (args.length < 2 || args[1].equals("")) {
+                isCurrentProject = true;
+            } else {
+                targetProjectName = args[1];
+            }
+            // if 3rd argument is omitted or set to "", use the index column
+            Object targetColumnName = args.length < 3 || args[2].equals("") ? INDEX_COLUMN_NAME : args[2];
+
+            long targetProjectID;
+            ProjectLookup lookup;
+
+            if (v != null && targetProjectName instanceof String && targetColumnName instanceof String) {
                 try {
-                    toProjectID = ProjectManager.singleton.getProjectID((String) toProjectName);
-                } catch (GetProjectIDException e){
+                    targetProjectID = isCurrentProject ? ((Project) bindings.get("project")).id
+                            : ProjectManager.singleton.getProjectID((String) targetProjectName);
+                } catch (GetProjectIDException e) {
                     return new EvalError(e.getMessage());
                 }
-                // add a try/catch here - error should bubble up from getInterProjectModel.computeJoin once that's modified
+
                 try {
-                    join = ProjectManager.singleton.getInterProjectModel().getJoin(
-                            // getJoin(Long fromProject, String fromColumn, Long toProject, String toColumn) {
-                            // source project name 
-                            (Long) ((Project) bindings.get("project")).id,
-                            // source column name
-                            (String) bindings.get("columnName"), 
-                            // target project name
-                            toProjectID,
-                            // target column name
-                            (String) toColumnName
-                            );
-                } catch (JoinException e) {
+                    lookup = ProjectManager.singleton.getLookupCacheManager().getLookup(targetProjectID, (String) targetColumnName);
+                } catch (LookupException e) {
                     return new EvalError(e.getMessage());
                 }
-                if(v instanceof String) {
-                    return join.getRows(v);
+
+                if (v instanceof WrappedCell) {
+                    return lookup.getRows(((WrappedCell) v).cell.value);
                 } else {
-                    return join.getRows(((WrappedCell) v).cell.value);
+                    return lookup.getRows(v);
                 }
             }
         }
-        return new EvalError(ControlFunctionRegistry.getFunctionName(this) + " expects a string or cell, a project name to join with, and a column name in that project");
+
+        // name to look up (optional), and a column name in that project (optional)");
+        return new EvalError(EvalErrorMessage.fun_cross_expects_value_project_column(ControlFunctionRegistry.getFunctionName(this)));
     }
-    
+
     @Override
     public String getDescription() {
-        return "join with another project by column";
+        return FunctionDescription.fun_cross();
     }
-    
+
     @Override
     public String getParams() {
-        return "cell c or string value, string projectName, string columnName";
+        return "cell or value, string projectName (optional), string columnName (optional)";
     }
-    
+
     @Override
     public String getReturns() {
         return "array";

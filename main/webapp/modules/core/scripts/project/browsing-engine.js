@@ -123,9 +123,9 @@ BrowsingEngine.prototype._initializeUI = function() {
     }
   });
 
-  this._elmts.refreshLink.click(function() { self.update(); });
-  this._elmts.resetLink.click(function() { self.reset(); });
-  this._elmts.removeLink.click(function() { self.remove(); });
+  this._elmts.refreshLink.on('click',function() { self.update(); });
+  this._elmts.resetLink.on('click',function() { self.reset(); });
+  this._elmts.removeLink.on('click',function() { self.remove(); });
 };
 
 BrowsingEngine.prototype._updateFacetOrder = function() {
@@ -190,7 +190,7 @@ BrowsingEngine.prototype.addFacet = function(type, config, options) {
 
   this._facets.push({ elmt: elmt, facet: facet });
 
-  ui.leftPanelTabs.tabs({ active: 0 });
+  ui.leftPanelTabs.tabs();
 
   Refine.update({ engineChanged: true });
 };

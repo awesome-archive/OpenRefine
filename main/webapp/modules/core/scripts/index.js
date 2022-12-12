@@ -23,8 +23,8 @@ LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
 A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
 OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
 SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,           
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY           
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
 THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
@@ -37,24 +37,10 @@ var Refine = {
   actionAreas: []
 };
 
-var lang = (navigator.language|| navigator.userLanguage).split("-")[0];
-var dictionary = "";
-$.ajax({
-	url : "command/core/load-language?",
-	type : "POST",
-	async : false,
-	data : {
-	  module : "core",
-//		lang : lang
-	},
-	success : function(data) {
-		dictionary = data['dictionary'];
-        lang = data['lang'];
-	}
-});
-$.i18n().load(dictionary, lang);
-$.i18n({ locale: lang });
-// End internationalization
+I18NUtil.init("core");
+
+Refine.wrapCSRF = CSRFUtil.wrapCSRF;
+Refine.postCSRF = CSRFUtil.postCSRF;
 
 Refine.selectActionArea = function(id) {
   $('.action-area-tab').removeClass('selected');
@@ -102,34 +88,35 @@ $(function() {
         function(data) {
           OpenRefineVersion = data;
 
-          $("#openrefine-version").text($.i18n('core-index/version')+" " + OpenRefineVersion.full_version);
-          
-
+          $("#openrefine-version").text($.i18n('core-index/refine-version', OpenRefineVersion.full_version));
+          $("#java-runtime-version").text(OpenRefineVersion.java_runtime_name + " " + OpenRefineVersion.java_runtime_version);
+          if (OpenRefineVersion.display_new_version_notice === "true") {
             $.getJSON("https://api.github.com/repos/openrefine/openrefine/releases/latest",
-             function( data ) {
-              var latestVersion = data.tag_name;
-              var latestVersionName = data.name;
-              var latestVersionUrl = data.html_url;
-              var thisVersion = OpenRefineVersion.version;
+                function (data) {
+                  var latestVersion = data.tag_name;
+                  var latestVersionName = data.name;
+                  var latestVersionUrl = data.html_url;
+                  var thisVersion = OpenRefineVersion.version;
 
-              if(latestVersion.startsWith("v")) {
-                latestVersion = latestVersion.substr(1);
-              }
+                  if (latestVersion.startsWith("v")) {
+                    latestVersion = latestVersion.substring(1);
+                  }
 
-              if (isThereNewRelease(thisVersion,latestVersion)) {
-                var container = $('<div id="notification-container">')
-                .appendTo(document.body);
-                var notification = $('<div id="notification">')
-                .text($.i18n('core-index/new-version')+' ')
-                .appendTo(container);
-                $('<a>')
-                .addClass('notification-action')
-                .attr("href", latestVersionUrl)
-                .attr("target", "_blank")
-                .text($.i18n('core-index/download')+' ' + latestVersionName + ' '+$.i18n('core-index/now')+'.')
-                .appendTo(notification);
-              }
-            });
+                  if (isThereNewRelease(thisVersion, latestVersion)) {
+                    var container = $('<div id="notification-container">')
+                        .appendTo(document.body);
+                    var notification = $('<div id="notification">')
+                        .text($.i18n('core-index/new-version') + ' ')
+                        .appendTo(container);
+                    $('<a>')
+                        .addClass('notification-action')
+                        .attr("href", latestVersionUrl)
+                        .attr("target", "_blank")
+                        .text($.i18n('core-index/download-now', latestVersionName))
+                        .appendTo(notification);
+                  }
+                });
+          }
         }
     );
   };
@@ -174,12 +161,12 @@ $(function() {
     .css("margin-top", rightPanelBodyVPaddings + "px")
     .css("width", ($('#right-panel').width() - rightPanelBodyHPaddings) + "px")
     .css("height", ($('#right-panel').height() - rightPanelBodyVPaddings) + "px");
-    
+
     for (var i = 0; i < Refine.actionAreas.length; i++) {
       Refine.actionAreas[i].ui.resize();
     }
   };
-  $(window).bind("resize", resize);
+  $(window).on("resize", resize);
   window.setTimeout(resize, 100); // for Chrome, give the window some time to layout first
 
   var renderActionArea = function(actionArea) {
@@ -191,7 +178,7 @@ $(function() {
     .addClass('action-area-tab')
     .text(actionArea.label)
     .appendTo($('#action-area-tabs'))
-    .click(function() {
+    .on('click', function() {
       Refine.selectActionArea(actionArea.id);
     });
 
@@ -202,7 +189,7 @@ $(function() {
     renderActionArea(Refine.actionAreas[i]);
   }
   Refine.selectActionArea('create-project');
-  
+
   $("#slogan").text($.i18n('core-index/slogan')+".");
   $("#or-index-pref").text($.i18n('core-index/preferences'));
   $("#or-index-help").text($.i18n('core-index/help'));

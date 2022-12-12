@@ -50,7 +50,6 @@ function init() {
   var RS = Packages.com.google.refine.RefineServlet;
   RS.registerCommand(module, "deauthorize", Packages.com.google.refine.extension.gdata.DeAuthorizeCommand());
   RS.registerCommand(module, "upload", Packages.com.google.refine.extension.gdata.UploadCommand());
-  // TODO: Need a new OAUTH2 authorize command for FusionTables
 
   // Register importer and exporter
   var IM = Packages.com.google.refine.importing.ImportingManager;
@@ -103,10 +102,12 @@ function process(path, request, response) {
     send(request, response, "authorize.vt", context);
   } else if (path == "authorized") {
     var context = {};
-    context.winname = request.getParameter("winname");
-    context.callback = request.getParameter("cb");
+    context.state = request.getParameter("state");
     
     (function() {
+      if (Packages.com.google.refine.extension.gdata.TokenCookie.getToken(request) !== null) {
+          return;
+      }
       var tokenAndExpiresInSeconds =  Packages.com.google.refine.extension.gdata.GoogleAPIExtension.getTokenFromCode(module,request);
       if (tokenAndExpiresInSeconds) {
         var tokenInfo = tokenAndExpiresInSeconds.split(",");

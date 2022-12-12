@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 ########################################################## 
 #               OpenRefine Control System             #
@@ -34,8 +34,11 @@ where [options] include:
   -p <port> the port that OpenRefine will listen to
      default: 3333
 
-  -i <interface> the host interface OpenRefine should bind to
+  -i <interface> the network interface OpenRefine should bind to
      default: 127.0.0.1
+	 
+  -H <host> the expected value for the Host header (set to * to disable checks)
+     default: <interface>
 
   -w <path> path to the webapp
      default: main/webapp
@@ -44,15 +47,16 @@ where [options] include:
      default: OS dependent
 
   -m <memory> max memory heap size to use
-     default: 1024M
-
-  -k <google api key> a server API key for calling Google APIs
+     default: 1400M
 
   -v <level> verbosity level [from low to high: error,warn,info,debug,trace]
      default: info
 
   -x <name=value> additional configuration parameters to pass to OpenRefine
      default: [none]
+
+  -c <path> path to refine.ini file
+     default: ./refine.ini
   
   --debug enable JVM debugging (on port 8000)
        
@@ -65,9 +69,9 @@ and <action> is one of
 
    test ................................ Run all OpenRefine tests
    server_test ......................... Run only the server tests
-   ui_test ............................. Run only the UI tests
    extensions_test ..................... Run only the extensions tests
-
+   ui_tests ............................ Run only the UI tests
+   
    broker .............................. Run OpenRefine Broker
    
    broker_appengine_run <id> <ver> ..... Run OpenRefine Broker for Google App Engine in local server
@@ -86,7 +90,6 @@ and <action> is one of
    dist <version> ...................... Make all distributions
 
    clean ............................... Clean compiled classes
-   distclean ........................... Remove all generated files
                 
 EOF
     exit 1
@@ -103,7 +106,7 @@ load_configs() {
    if [ "${TEMP_CONFIG}" = "" ] ; then
        error "Could not create temporary file to load configurations"
    fi
-   cat $1 | egrep "^[A-Z]" | sed 's/^\(.*\)$/export \1/' > ${TEMP_CONFIG}
+   cat $1 | egrep "^[A-Z]" | sed 's/^\([^=]*\)=\(.*\)$/export \1=(\2)/' > ${TEMP_CONFIG}
    . ${TEMP_CONFIG}
    rm ${TEMP_CONFIG}
 }
@@ -115,16 +118,16 @@ check_macosx() {
 }
 
 check_downloaders() {
-    CURL="`which curl 2> /dev/null`"
-    WGET="`which wget 2> /dev/null`"
-    
+    CURL="`command -v curl 2> /dev/null`"
+    WGET="`command -v wget 2> /dev/null`"
+
     if [ -z "$CURL" ] && [ -z "$WGET" ] ; then
         error "We need either 'curl' or 'wget' present in PATH to download external dependencies."
     fi
 }
 
 check_unzip() {
-    UNZIP="`which unzip 2> /dev/null`"
+    UNZIP="`command -v unzip 2> /dev/null`"
     
     if [ -z "$UNZIP" ] ; then
         error "We need 'unzip' present in PATH to expand external dependencies."
@@ -132,7 +135,7 @@ check_unzip() {
 }
     
 check_python() {
-    PYTHON="`which python 2> /dev/null`"
+    PYTHON="`command -v python 2> /dev/null`"
     if [ -z "$PYTHON" ] ; then
         error "This action requires you to have 'python' installed and present in your PATH. You can download it for free at http://www.python.org/"
     fi
@@ -152,12 +155,13 @@ check_pywin32() {
 
 check_running() {
     check_downloaders
-    URL="http://${REFINE_HOST}:${REFINE_PORT}/"
+    URL="http://${REFINE_HOST_INTERNAL}:${REFINE_PORT}/"
     CHECK_STR="<title>OpenRefine</title>"
 
     if [ "$CURL" ] ; then
         curl -s -S -f $URL > /dev/null 2>&1
-        if [ "$?" = "7" ] || [ "$?" = "22" ] ; then
+        CURL_RETURN=$?
+        if [ $CURL_RETURN -eq "7" ] || [ $CURL_RETURN -eq "22" ]  ; then
             NOT_RUNNING="1"
         fi
     elif [ "$WGET" ] ; then
@@ -215,7 +219,7 @@ get_revision() {
     elif [ -d ".git" ] ; then
         INFO=`git describe`
         REVISION=`echo $INFO`
-	REVISION=${REVISION:4}
+    REVISION=${REVISION:4}
     else
         error "cannot obtain revision, exiting!"
     fi
@@ -258,8 +262,8 @@ tool_download() {
 load_data() {
     FILE=$1
     NAME=$2
-    URL="http://${REFINE_HOST}:${REFINE_PORT}/command/core/create-project-from-upload"
-    CURL="`which curl 2> /dev/null`"
+    URL="http://${REFINE_HOST_INTERNAL}:${REFINE_PORT}/command/core/create-project-from-upload"
+    CURL="`command -v curl 2> /dev/null`"
     
     if [ -z "$CURL" ] ; then
         error "We need 'curl' present in PATH to upload data to OpenRefine."
@@ -272,11 +276,11 @@ load_data() {
 display() {
     FILE=$1
     if [ "$OS" = "macosx" ] ; then
-	open $FILE
+    open $FILE
     elif [ "$OS" = "linux" ] ; then
-	gnome-open $FILE
+    gnome-open $FILE
     else
-	notepad $FILE
+    notepad $FILE
     fi  
 
 }
@@ -286,6 +290,7 @@ build_prepare() {
     if [ ! -d $REFINE_BUILD_DIR ] ; then 
         mkdir $REFINE_BUILD_DIR || error "Error while making directory $REFINE_BUILD_DIR"
     fi
+    ( cd main/webapp && npm install )
 }
 
 dist_prepare() {
@@ -303,17 +308,18 @@ tools_prepare() {
 mvn_prepare() {
     tools_prepare
 
-    MVN_VERSION="3.2.2"
-    MVN_URL="https://archive.apache.org/dist/maven/binaries/apache-maven-${MVN_VERSION}-bin.tar.gz"
+    MVN_VERSION="3.8.5"
+    MVN_URL="https://dlcdn.apache.org/maven/maven-3/${MVN_VERSION}/binaries/apache-maven-${MVN_VERSION}-bin.tar.gz"
     MVN_FILE=`echo $MVN_URL | sed 's|.*/||'`
     MVN_DIR="apache-maven-${MVN_VERSION}"
 
-    MVN="`which mvn 2> /dev/null`"
-   
+    MVN="`command -v mvn 2> /dev/null`"
+
     if [ -z "$MVN" ] ; then
         if [ -z "$MVN_HOME" ] ; then
             cd $REFINE_TOOLS_DIR
                 if [ ! -f "$MVN_FILE" ] ; then
+                    echo "\nCould not find Maven locally, starting download for Maven ..."
                     download $MVN_URL $MVN_FILE
                 fi
                 if [ ! -d "$MVN_DIR" ] ; then
@@ -372,9 +378,9 @@ virtualenv_prepare() {
     
 # ----------------------------------------------------------------------------------------------
 
-mvn() {
-    mvn_prepare   
-    
+do_mvn() {
+    mvn_prepare
+
     "$MVN" $MVN_PARAMS -Dversion="$VERSION" -Dfull_version="$FULL_VERSION"  $1 || error "Error while running maven task '$1'"
 }
 
@@ -382,29 +388,47 @@ mvn() {
 
 dist() {
     get_version $1
+    build_prepare
     mvn_prepare
     "$MVN" versions:set -DnewVersion="$VERSION"
-    mvn package
+    "$MVN" package
 }
- 
+
+windows_dist() {
+    get_version $1
+    build_prepare
+    mvn_prepare
+    "$MVN" versions:set -DnewVersion="$VERSION"
+    "$MVN" package -P windows
+}
+
+linux_dist() {
+    get_version $1
+    build_prepare
+    mvn_prepare
+    "$MVN" versions:set -DnewVersion="$VERSION"
+    "$MVN" package -P linux
+}
+
 # Kept just in case someone wants to follow this workflow on a mac,
 # but no longer needed as "mvn package" does it directly on both mac and linux.
 mac_dist() {
     check_macosx
+    build_prepare
     dist_prepare
     get_version $1
     get_revision
 
     appbundler_prepare
-    
+
     ANT_PARAMS="-Dappbundler.dir=${REFINE_TOOLS_DIR}/${APPBUNDLER_DIR}"
     ant mac
 
     mkdir -p "$REFINE_BUILD_DIR/mac/.background"
     cp graphics/dmg_background/dmg_background.png "$REFINE_BUILD_DIR/mac/.background/dmg_background.png"
-    
+
     SIZE=350
-    
+
     if [ -f "$REFINE_BUILD_DIR/temp_refine.dmg" ] ; then
         rm "$REFINE_BUILD_DIR/temp_refine.dmg"
     fi
@@ -419,7 +443,7 @@ mac_dist() {
     DEVICE=`hdiutil attach -readwrite -noverify -noautoopen "$REFINE_BUILD_DIR/temp_refine.dmg" | egrep '^/dev/' | sed -e "s/^\/dev\///g" -e 1q  | awk '{print $1}'`
     echo $DEVICE
     hdiutil attach "$REFINE_BUILD_DIR/temp_refine.dmg" || error "Can't attach temp DMG"
-    
+
     echo '
        tell application "Finder"
          tell disk "'$TITLE'"
@@ -436,26 +460,26 @@ mac_dist() {
             set position of item "OpenRefine" of container window to {170, 175}
             set position of item "Applications" of container window to {380, 175}
             close
-            open               
+            open
             update without registering applications
-            delay 5            
+            delay 5
             eject
          end tell
        end tell
     ' | osascript || error "Error running applescript"
-    
+
     sync
     sync
     sleep 3
     hdiutil detach $DEVICE
-    
+
     if [ -f "$REFINE_DIST_DIR/openrefine-mac-$VERSION.dmg" ] ; then
         rm "$REFINE_DIST_DIR/openrefine-mac-$VERSION.dmg"
     fi
-    
+
     hdiutil convert "$REFINE_BUILD_DIR/temp_refine.dmg" -format UDZO -imagekey zlib-level=9 -o "$REFINE_DIST_DIR/openrefine-mac-$VERSION.dmg" || error "Error compressing DMG"
     hdiutil internet-enable -yes "$REFINE_DIST_DIR/openrefine-mac-$VERSION.dmg" || error "Error internet-enabling DMG"
-    
+
     rm -f "$REFINE_BUILD_DIR/temp_refine.dmg"
 }
 
@@ -464,17 +488,37 @@ test() {
     $MVN test
 }
 
-ui_test() {
-    INTERACTIVE=$1
-    
-    windmill_prepare
+
+ui_tests() {
+    download http://okfnlabs.org/reconcile-csv/dist/reconcile-csv-0.1.2.jar ./tools/reconcile-csv-0.1.2.jar
+    RECONCILE_SERVER_CMD="$JAVA -Xmx2g -jar ./tools/reconcile-csv-0.1.2.jar  ./main/tests/cypress/cypress/fixtures/csv-reconcile-species.csv scientific_name taxon_id"
+    echo "Starting reconcile-csv-0.1.2 ..."
+    $RECONCILE_SERVER_CMD 2>&1 &
+    RECONCILE_SERVER_PID="$!"
+
+    get_revision
+
+    CYPRESS_RECORD=0
+
+    if [ -z "$CYPRESS_BROWSER" ] ; then
+        CYPRESS_BROWSER="electron"
+    fi
+
+    if [ ! -z "$CYPRESS_PROJECT_ID" ] && [ ! -z "$CYPRESS_RECORD_KEY" ] ; then
+        CYPRESS_RECORD=1
+        echo "Tests will be recorded in Cypress Dashboard"
+    elif [ ! -z "$CYPRESS_PROJECT_ID" ] && [ -z "$CYPRESS_RECORD_KEY" ] ; then
+        fail "Found a Cypress project id but no record key"
+    fi
 
     REFINE_DATA_DIR="${TMPDIR:=/tmp}/openrefine-tests"
-    
+
     add_option "-Drefine.headless=true"
-    
-    run fork
-    
+    add_option "-Drefine.autoreload=false"
+    add_option "-Dbutterfly.autoreload=false"
+
+    run fork > /dev/null
+
     echo "Waiting for OpenRefine to load..."
     sleep 5
     check_running
@@ -483,24 +527,44 @@ ui_test() {
     fi
     echo "... proceed with the tests."
     echo ""
-    
-    load_data "$REFINE_TEST_DIR/data/food.csv" "Food"
-    sleep 3
-    echo ""
-    
-    echo "Starting Windmill..."
-    if [ -z "$INTERACTIVE" ] ; then
-        "$WINDMILL" firefox firebug loglevel=WARN http://${REFINE_HOST}:${REFINE_PORT}/ jsdir=$REFINE_TEST_DIR/client/src exit
-    else
-        "$WINDMILL" firefox firebug loglevel=WARN http://${REFINE_HOST}:${REFINE_PORT}/
+
+    echo "Starting Cypress..."
+    # Cypress needs a unique group id
+    # We're hashing the list of files to generate such Group Id
+    CYPRESS_GROUP=$(echo $CYPRESS_BROWSER$CYPRESS_SPECS | shasum)
+    CYPRESS_RUN_CMD="yarn --cwd ./main/tests/cypress run cypress run --spec "$CYPRESS_SPECS" --browser $CYPRESS_BROWSER --group "$CYPRESS_GROUP" --headless --quiet --reporter list --env DISABLE_PROJECT_CLEANUP=1,OPENREFINE_URL=http://$REFINE_HOST_INTERNAL:$REFINE_PORT"
+    if [ "$CYPRESS_RECORD" = "1" ] ; then
+        # if tests are recorded, project id is added to env vars, and --record flag is added to the cmd-line
+        export CYPRESS_PROJECT_ID=$CYPRESS_PROJECT_ID
+        CYPRESS_RUN_CMD="$CYPRESS_RUN_CMD --record --key $CYPRESS_RECORD_KEY --ci-build-id=$CYPRESS_CI_BUILD_ID --tag $CYPRESS_BROWSER"
     fi
-    
+    export MOZ_FORCE_DISABLE_E10S=1
+    echo $CYPRESS_RUN_CMD
+    $CYPRESS_RUN_CMD
+
+    if [ "$?" = "0" ] ; then
+        UI_TEST_SUCCESS="1"
+    else
+        UI_TEST_SUCCESS="0"
+    fi
+
+    if [ "$CYPRESS_RECORD" = "1" ] ; then
+        echo "You can review tests on Cypress.io: https://dashboard.cypress.io/projects/$CYPRESS_PROJECT_ID/runs"
+    fi
+
     echo ""
     echo "Killing OpenRefine"
     /bin/kill -9 $REFINE_PID
+    echo "Killing Reconciliation Server"
+    /bin/kill -9 $RECONCILE_SERVER_PID
     echo "Cleaning up"
     rm -rf "$REFINE_DATA_DIR"
+
+    if [ "$UI_TEST_SUCCESS" = "0" ] ; then
+        error "The UI test suite failed."
+    fi
 }
+
 
 server_test() {
     mvn_prepare
@@ -514,17 +578,18 @@ extensions_test() {
 
 run() {
     FORK=$1
-    
+
     check_running
-    
+
     if [ "$RUNNING" ] ; then
         warn "OpenRefine is already running."
     fi
-    
+
     if [ ! -d $REFINE_CLASSES_DIR ] ; then
         IS_JAR=`ls $REFINE_LIB_DIR | grep openrefine`
         if [ -z "$IS_JAR" ] ; then
             mvn_prepare
+            build_prepare
             $MVN process-resources
             $MVN compile test-compile
             echo ""
@@ -538,7 +603,7 @@ run() {
     if [ "$OS" = "macosx" ] ; then
         add_option '-Xdock:icon=graphics/icon/openrefine.icns'
     fi
-    
+
     if [ "$REFINE_DATA_DIR" ] ; then
         add_option "-Drefine.data_dir=$REFINE_DATA_DIR"
     fi
@@ -546,17 +611,17 @@ run() {
     if [ "$REFINE_WEBAPP" ] ; then
         add_option "-Drefine.webapp=$REFINE_WEBAPP"
     fi
-                    
+
     if [ "$REFINE_PORT" ] ; then
         add_option "-Drefine.port=$REFINE_PORT"
     fi
-    
-    if [ "$REFINE_HOST" ] ; then
-        add_option "-Drefine.host=$REFINE_HOST"
+
+    if [ "$REFINE_INTERFACE" ] ; then
+        add_option "-Drefine.interface=$REFINE_INTERFACE"
     fi
 
-    if [ "$REFINE_GOOGLE_API_KEY" ] ; then
-        add_option "-Drefine.google_api_key=$REFINE_GOOGLE_API_KEY"
+    if [ "$REFINE_HOST" ] ; then
+        add_option "-Drefine.host=$REFINE_HOST"
     fi
 
     if [ "$REFINE_AUTOSAVE_PERIOD" ] ; then
@@ -567,7 +632,6 @@ run() {
 
     RUN_CMD=("$JAVA" -cp "$CLASSPATH" "${OPTS[@]}" "com.google.refine.Refine")
 
-    echo "Starting OpenRefine at 'http://${REFINE_HOST}:${REFINE_PORT}/'"
     echo ""
 
     if [ -z "$FORK" ] ; then
@@ -577,10 +641,10 @@ run() {
         REFINE_PID="$!"
     fi
 }
-    
+
 broker_build() {
     build_prepare
-    get_revision    
+    get_revision
     # TODO migrate to Maven
     $MVN prepare_broker
 }
@@ -603,7 +667,7 @@ broker_run() {
 
     add_option "-Drefine.port=$REFINE_PORT"
     add_option "-Drefine.host=0.0.0.0"
-                    
+
     LIB_PATHS=`cat server/classpath.txt`
     CLASSPATH="$REFINE_CLASSES_DIR${SEP}$LIB_PATHS"
 
@@ -611,8 +675,8 @@ broker_run() {
 
     #echo "$RUN_CMD"
     #echo ""
-  
-    echo "Starting OpenRefine Broker at 'http://${REFINE_HOST}:${REFINE_PORT}/'"
+
+    echo "Starting OpenRefine Broker at 'http://0.0.0.0:${REFINE_PORT}/'"
     echo ""
 
     if [ -z "$FORK" ] ; then
@@ -621,27 +685,27 @@ broker_run() {
         $RUN_CMD &
         REFINE_PID="$!"
     fi
-    
+
 }
 
 broker_appengine_build() {
     appengine_prepare
     get_revision
-    
+
     MVN_PARAMS="-Dappengine.sdk.dir=${APPENGINE_HOME}"
 
     if [ "$1" ] ; then
         MVN_PARAMS="$MVN_PARAMS -Dappengine.app_id=$1"
     fi
-    
+
     if [ "$2" ] ; then
         MVN_PARAMS="$MVN_PARAMS -Dappengine.version=$2"
     fi
-        
+
     # TODO migrate this to Maven
     $MVN prepare_broker_appengine
 }
-       
+
 broker_appengine_upload() {
     broker_appengine_build $1 $2
     "$APPENGINE" update "$REFINE_BUILD_DIR/broker/appengine"
@@ -651,33 +715,33 @@ broker_appengine_run() {
     broker_appengine_build $1 $2
     "$APPENGINE_LOCAL" "$REFINE_BUILD_DIR/broker/appengine"
 }
-    
+
 findbugs() {
     findbugs_prepare
-    
+
     MVN_PARAMS="-Dfindbugs.dir=${REFINE_TOOLS_DIR}/${FINDBUGS_DIR}"
     ant findbugs
-    
+
     display "$REFINE_BUILD_DIR/reports/findbugs.html"
-}    
+}
 
 pmd() {
     pmd_prepare
-    
+
     ANT_PARAMS="-Dpmd.dir=${REFINE_TOOLS_DIR}/${PMD_DIR}"
     ant pmd
-    
+
     display "$REFINE_BUILD_DIR/reports/pmd.html"
-}    
+}
 
 cpd() {
     pmd_prepare
-    
+
     ANT_PARAMS="-Dpmd.dir=${REFINE_TOOLS_DIR}/${PMD_DIR}"
     ant cpd
 
     display "$REFINE_BUILD_DIR/reports/cpd.txt"
-}    
+}
 
 jslint() {
     jslint_prepare
@@ -690,19 +754,19 @@ jslint() {
 
 whitespace() {
     [ $# -gt 0 ] || usage
-    
+
     for i in `find . -name *.$1`; do
         # expand tabs to spaces
         expand -t 4 < $i > $i.1
-        
+
         # convert DOS to UNIX newlines
         tr -d '\r' < $i.1 > $i.2
-            
+
         rm $i $i.1
         mv $i.2 $i
     done
-}   
-    
+}
+
 checkJavaMajorVersion() {
   java_ver=$("$JAVA" -version 2>&1 | grep version | cut -d ' ' -f 3 | tr -d \")
   # Java 6, 7, 8 starts with 1.x
@@ -712,16 +776,16 @@ checkJavaMajorVersion() {
     # Java 9+ starts with x using semver versioning
     major=`echo ${java_ver} | sed -E 's/([0-9]+)(-ea|(\.[0-9]+)*)/\1/g'`
   fi
-  if (( ${major} < 8 )); then
-    error "OpenRefine requires Java version 8 or later. If you have multiple versions of Java installed, please set the environment variable JAVA_HOME to the correct version."
+  if (( ${major} < 11 )); then
+    error "OpenRefine requires Java version 11 or later. If you have multiple versions of Java installed, please set the environment variable JAVA_HOME to the correct version."
   fi
-  if (( ${major} > 12 )); then
-    echo "WARNING: OpenRefine is not tested and not recommended for use with Java versions greater than 12."
+  if (( ${major} > 17 )); then
+    echo "WARNING: OpenRefine is not tested and not recommended for use with Java versions greater than 17."
   fi
 }
 
 # -------------------------- script -----------------------------
-    
+
 # ----- Normalize the current directory -------------------------
 
 cd `dirname $0`
@@ -741,29 +805,26 @@ case "$SYSTEM" in
   *) OS="other" ;;
 esac
 
-SEP=":" 
+SEP=":"
 if [ "$OS" = "windows" ] ; then
-    SEP=";" 
+    SEP=";"
 fi
 
-# ----- Load configurations -------------------------------------
-
-load_configs refine.ini
 
 # ----- Make sure there is an appropriate java environment is available -------------
 
 if [ "$OS" = "macosx" ] ; then
     if [ -z "$JAVA_HOME" ] ; then
-	# We need want recent Java because we're bundling JRE - may want to warn and force developer to set JAVA_HOME
-	# The /usr/libexec/java_home utility may be tied to the Java prefs app, so could go away when Apple removes it
+    # We need want recent Java because we're bundling JRE - may want to warn and force developer to set JAVA_HOME
+    # The /usr/libexec/java_home utility may be tied to the Java prefs app, so could go away when Apple removes it
         export JAVA_HOME=$(/usr/libexec/java_home)
     fi
 fi
 
 if [ "$JAVA_HOME" ] ; then
     JAVA="$JAVA_HOME/bin/java"
-else 
-    JAVA="`which java 2> /dev/null`"
+else
+    JAVA="`command -v java 2> /dev/null`"
 fi
 
 if [ ! -x "$JAVA" ] ; then
@@ -776,15 +837,17 @@ checkJavaMajorVersion
 
 while [ $# -ne 0 ] ; do
   case "$1" in
-    -h) usage;;
+	-h) usage;;
     -p) shift; REFINE_PORT="$1"; shift; continue;;
-    -i) shift; REFINE_HOST="$1"; shift; continue;;
+    -H) shift; REFINE_HOST="$1"; shift; continue;;
+    -i) shift; REFINE_INTERFACE="$1"; shift; continue;;
     -w) shift; REFINE_WEBAPP="$1"; shift; continue;;
     -d) shift; REFINE_DATA_DIR="$1"; shift; continue;;
-    -m) shift; REFINE_MEMORY="$1"; shift; continue;;
+    -m) shift; REFINE_MEMORY="$1"; REFINE_MIN_MEMORY="$1"; shift; continue;;
     -k) shift; REFINE_GOOGLE_API_KEY="$1"; shift; continue;;
     -v) shift; REFINE_VERBOSITY="$1"; shift; continue;;
     -x) shift; REFINE_EXTRA_OPTS="$1"; shift; continue;;
+    -c) shift; REFINE_INI_PATH="$1"; shift; continue;;
     --debug) shift; add_option '-Xdebug' '-Xrunjdwp:transport=dt_socket,address=8000,server=y,suspend=n'; continue;;
     --jmx) shift; add_option '-Dcom.sun.management.jmxremote'; continue;;
     -*) fail "Invalid option: $1";;
@@ -799,6 +862,15 @@ fi
 if [ -z "$ACTION" ] ; then
     ACTION="run"
 fi
+
+# ----- Load configurations -------------------------------------
+
+if [ -z $REFINE_INI_PATH ]; then
+  REFINE_INI_PATH=refine.ini
+fi
+
+echo "Using ${REFINE_INI_PATH} for configuration"
+load_configs $REFINE_INI_PATH
 
 # ----- Verify and Set Required Environment Variables -------------------------
 
@@ -817,15 +889,17 @@ add_option "-Xms$REFINE_MIN_MEMORY" "-Xmx$REFINE_MEMORY" "-Drefine.memory=$REFIN
 
 freeRam=UNKNOWN
 if [ "$OS" = "macosx" ] ; then
-	freeRam=$(top -l 1 | grep PhysMem | awk '{print $6}' | tr -d M)
+    freeRam=$(top -l 1 | grep PhysMem | awk '{print $6}' | tr -d M)
 elif [ "$OS" = "linux" ] ; then
-	freeRam=$(free -m | grep -oP '\d+' | head -n 1)
+    freeRam=$(free -m | grep -oP '\d+' | head -n 1)
 fi
 
-echo You have "$freeRam"M of free memory. 
+echo "-------------------------------------------------------------------------------------------------"
+echo You have "$freeRam"M of free memory.
 echo Your current configuration is set to use $REFINE_MEMORY of memory.
 echo OpenRefine can run better when given more memory. Read our FAQ on how to allocate more memory here:
-echo https://github.com/OpenRefine/OpenRefine/wiki/FAQ:-Allocate-More-Memory
+echo https://openrefine.org/docs/manual/installing\#increasing-memory-allocation
+echo "-------------------------------------------------------------------------------------------------"
 
 if [ -z "$REFINE_MAX_FORM_CONTENT_SIZE" ] ; then
     REFINE_MAX_FORM_CONTENT_SIZE="1048576"
@@ -836,8 +910,23 @@ if [ -z "$REFINE_PORT" ] ; then
     REFINE_PORT="3333"
 fi
 
+if [ -z "$REFINE_INTERFACE" ] ; then
+    REFINE_INTERFACE="127.0.0.1"
+fi
+
 if [ -z "$REFINE_HOST" ] ; then
-    REFINE_HOST="127.0.0.1"
+    if [ "$REFINE_INTERFACE" = "0.0.0.0" ] ; then
+        REFINE_HOST='*'
+    else
+        REFINE_HOST="$REFINE_INTERFACE"
+    fi
+fi
+
+if [ "$REFINE_HOST" = '*' ] ; then
+    echo No host specified while binding to interface 0.0.0.0, guessing localhost.
+    REFINE_HOST_INTERNAL="localhost"
+else
+    REFINE_HOST_INTERNAL="$REFINE_HOST"
 fi
 
 if [ -z "$REFINE_WEBAPP" ] ; then
@@ -886,16 +975,22 @@ fi
 add_option "-Dpython.path=$JYTHONPATH"
 add_option "-Dpython.cachedir=$HOME/.local/share/google/refine/cachedir"
 
+if [ ! -z "$GDATA_CLIENT_ID" ] ; then
+    if [ ! -z "$GDATA_CLIENT_SECRET" ] ; then
+        if [ ! -z "$GDATA_API_KEY" ] ; then
+            add_option "-Dext.gdata.clientid=$GDATA_CLIENT_ID" "-Dext.gdata.clientsecret=$GDATA_CLIENT_SECRET" "-Dext.gdata.apikey=$GDATA_API_KEY"
+        fi
+    fi
+fi
+
 # ----- Respond to the action given --------------------------------------------
 case "$ACTION" in
-  build) build_prepare; mvn process-resources; mvn compile\ test-compile;;
-  clean) mvn clean;;
+  build) build_prepare; do_mvn process-resources; do_mvn compile\ test-compile;;
+  clean) do_mvn clean;;
   whitespace) whitespace $1;;
-  distclean) mvn distclean;;
-  test) test $1;;  
-  tests) test $1;;  
-  ui_test) ui_test $1;;  
-  ui_tests) ui_test $1;;  
+  test) test $1;;
+  tests) test $1;;
+  ui_tests) ui_tests;;    
   server_test) server_test $1;;  
   server_tests) server_test $1;;  
   extensions_test) extensions_test $1;;

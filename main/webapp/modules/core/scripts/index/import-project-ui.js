@@ -33,14 +33,26 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 Refine.ImportProjectUI = function(elmt) {
   elmt.html(DOM.loadHTML("core", "scripts/index/import-project-ui.html"));
+
+  Refine.wrapCSRF(function(token) {
+     $('#project-upload-form').attr('action', "command/core/import-project?" + $.param({ csrf_token: token}));
+  });
   
   this._elmt = elmt;
   this._elmts = DOM.bind(elmt);
-  
+  this._elmts.projectButton.on('click', function(e) {	
+    if(document.getElementById("project-tar-file-input").value === "" ){	
+     alert($.i18n('core-index-import/warning-import-file'));
+    }
+    else{
+     document.getElementById("import-project-button").type = "submit";
+     }
+  });
+
   $('#or-import-locate').text($.i18n('core-index-import/locate'));
   $('#or-import-file').text($.i18n('core-index-import/file'));
   $('#or-import-rename').text($.i18n('core-index-import/rename'));
-  $('#import-project-button').attr("value",$.i18n('core-buttons/import-proj'));
+  $('#import-project-button').val($.i18n('core-buttons/import-proj'));
 };
 
 Refine.actionAreas.push({
@@ -50,5 +62,5 @@ Refine.actionAreas.push({
 });
 
 Refine.ImportProjectUI.prototype.resize = function() {
-  
+
 };

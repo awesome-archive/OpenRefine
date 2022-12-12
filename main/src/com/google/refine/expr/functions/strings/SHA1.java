@@ -35,6 +35,8 @@ package com.google.refine.expr.functions.strings;
 
 import java.util.Properties;
 
+import com.google.refine.grel.EvalErrorMessage;
+import com.google.refine.grel.FunctionDescription;
 import org.apache.commons.codec.digest.DigestUtils;
 
 import com.google.refine.expr.EvalError;
@@ -48,21 +50,21 @@ public class SHA1 implements Function {
         if (args.length == 1 && args[0] != null) {
             Object o = args[0];
             String s = (o instanceof String) ? (String) o : o.toString();
-            return DigestUtils.shaHex(s);
+            return DigestUtils.sha1Hex(s);
         }
-        return new EvalError(ControlFunctionRegistry.getFunctionName(this) + " expects a string");
+        return new EvalError(EvalErrorMessage.expects_one_string(ControlFunctionRegistry.getFunctionName(this)));
     }
-    
+
     @Override
     public String getDescription() {
-        return "Returns the SHA-1 hash of s";
+        return FunctionDescription.str_sha1();
     }
-    
+
     @Override
     public String getParams() {
         return "string s";
     }
-    
+
     @Override
     public String getReturns() {
         return "string";

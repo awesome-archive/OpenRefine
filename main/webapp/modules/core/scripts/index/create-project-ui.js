@@ -56,7 +56,7 @@ Refine.CreateProjectUI = function(elmt) {
   $('#create-project-progress-cancel-button').text($.i18n('core-buttons/cancel'));
   $('#create-project-error-ok-button').html($.i18n('core-buttons/ok'));
   
-  $.post(
+  $.get(
     "command/core/get-importing-configuration",
     null,
     function(data) {
@@ -100,7 +100,7 @@ Refine.CreateProjectUI.prototype.addSourceSelectionUI = function(sourceSelection
   .addClass('create-project-ui-source-selection-tab')
   .text(sourceSelectionUI.label)
   .appendTo(headerContainer)
-  .click(function() { self.selectImportSource(sourceSelectionUI.id); });
+  .on('click',function() { self.selectImportSource(sourceSelectionUI.id); });
 
   sourceSelectionUI.ui.attachUI(sourceSelectionUI._divBody);
 
@@ -178,7 +178,7 @@ Refine.CreateProjectUI.prototype.showImportProgressPanel = function(progressMess
   $('#create-project-progress-message-right').empty();
   $('#create-project-progress-timing').empty();
 
-  $('#create-project-progress-cancel-button').unbind().click(onCancel);
+  $('#create-project-progress-cancel-button').off().on('click',onCancel);
 };
 
 Refine.CreateProjectUI.prototype.pollImportJob = function(start, jobID, timerID, checkDone, callback, onError) {
@@ -222,10 +222,10 @@ Refine.CreateProjectUI.prototype.pollImportJob = function(start, jobID, timerID,
           if (secondsRemaining > 1) {
             if (secondsRemaining > 60) {
               $('#create-project-progress-timing').text(
-                  Math.ceil(secondsRemaining / 60) + " "+$.i18n('core-index-create/min-remaining'));
+                  $.i18n('core-index-create/min-remaining', Math.ceil(secondsRemaining / 60)));
             } else {
               $('#create-project-progress-timing').text(
-                  Math.ceil(secondsRemaining) + " "+$.i18n('core-index-create/sec-remaining'));
+                  $.i18n('core-index-create/sec-remaining', Math.ceil(secondsRemaining) ));
             }
           } else {
             $('#create-project-progress-timing').text($.i18n('core-index-create/almost-done'));
@@ -236,8 +236,8 @@ Refine.CreateProjectUI.prototype.pollImportJob = function(start, jobID, timerID,
         }
         $('#create-project-progress-message').text(progress.message);
         if ('memory' in progress) {
-          var percent = progress.memory * 100.0 / progress.maxmemory;
-          $('#create-project-progress-memory').text($.i18n('core-index-create/memory-usage')+" "+percent.toFixed()+'% ('+progress.memory+'/'+progress.maxmemory+"MB)");
+          var percent = Math.ceil(progress.memory * 100.0 / progress.maxmemory);
+          $('#create-project-progress-memory').text($.i18n('core-index-create/memory-usage', percent, progress.memory, progress.maxmemory));
           if (percent > 90) {
             $('#create-project-progress-memory').addClass('warning');
           } else {
@@ -257,7 +257,7 @@ Refine.CreateProjectUI.prototype.showImportJobError = function(message, stack) {
   $('#create-project-error-stack').text(stack || $.i18n('core-index-create/no-details'));
 
   this.showCustomPanel(this._errorPanel);
-  $('#create-project-error-ok-button').unbind().click(function() {
+  $('#create-project-error-ok-button').off().on('click',function() {
     self.showSourceSelectionPanel();
   });
 };
@@ -271,5 +271,8 @@ Refine.CreateProjectUI.composeErrorMessage = function(job) {
 };
 
 Refine.CreateProjectUI.cancelImportingJob = function(jobID) {
-  $.post("command/core/cancel-importing-job?" + $.param({ "jobID": jobID }));
+  Refine.wrapCSRF(function(token) {
+     $.post("command/core/cancel-importing-job?" + $.param({ "jobID": jobID }),
+           {csrf_token: token});
+  });
 };

@@ -35,6 +35,7 @@ package com.google.refine.expr.functions.strings;
 
 import java.util.Properties;
 
+import com.google.refine.grel.FunctionDescription;
 import org.apache.commons.lang3.StringUtils;
 
 import com.google.refine.grel.Function;
@@ -47,22 +48,22 @@ public class Chomp implements Function {
             Object o1 = args[0];
             Object o2 = args[1];
             if (o1 != null && o2 != null && o1 instanceof String && o2 instanceof String) {
-                return StringUtils.chomp((String) o1, (String) o2);
+                return StringUtils.removeEnd((String) o1, (String) o2);
             }
         }
         return null;
     }
-    
+
     @Override
     public String getDescription() {
-        return "Removes separator from the end of str if it's there, otherwise leave it alone.";
+        return FunctionDescription.str_chomp();
     }
-    
+
     @Override
     public String getParams() {
-        return "string str, string separator";
+        return "string s, string sep";
     }
-    
+
     @Override
     public String getReturns() {
         return "string";

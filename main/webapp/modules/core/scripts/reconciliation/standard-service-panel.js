@@ -44,7 +44,7 @@ ReconStandardServicePanel.prototype._guessTypes = function(f) {
   var self = this;
   var dismissBusy = DialogSystem.showBusy();
 
-  $.post(
+  Refine.postCSRF(
     "command/core/guess-types-of-column?" + $.param({
       project: theProject.id, 
       columnName: this._column.name,
@@ -52,29 +52,34 @@ ReconStandardServicePanel.prototype._guessTypes = function(f) {
     }),
     null, 
     function(data) {
-      self._types = data.types;
+      if (data.code && data.code === 'ok') {
+        self._types = data.types;
 
-      if (self._types.length === 0 && "defaultTypes" in self._service) {
-        var defaultTypes = {};
-        $.each(self._service.defaultTypes, function() {
-          defaultTypes[this.id] = this.name;
-        });
-        $.each(self._types, function() {
-          delete defaultTypes[typeof this == "string" ? this : this.id];
-        });
-        for (var id in defaultTypes) {
-          if (defaultTypes.hasOwnProperty(id)) {
-            self._types.push({
-              id: id,
-              name: defaultTypes[id].name
-            });
+        if (self._types.length === 0 && "defaultTypes" in self._service) {
+          var defaultTypes = {};
+          $.each(self._service.defaultTypes, function() {
+            defaultTypes[this.id] = this.name;
+          });
+          $.each(self._types, function() {
+            delete defaultTypes[typeof this == "string" ? this : this.id];
+          });
+          for (var id in defaultTypes) {
+            if (defaultTypes.hasOwnProperty(id)) {
+              self._types.push({
+                id: id,
+                name: defaultTypes[id].name
+              });
+            }
           }
         }
+      } else {
+        alert('Guess Types query failed ' + data.code + ' : ' + data.message);
       }
 
       dismissBusy();
       f();
-    }
+    },
+    "json"
   );
 };
 
@@ -83,16 +88,20 @@ ReconStandardServicePanel.prototype._constructUI = function() {
   this._panel = $(DOM.loadHTML("core", "scripts/reconciliation/standard-service-panel.html")).appendTo(this._container);
   this._elmts = DOM.bind(this._panel);
   
-  this._elmts.or_proc_access.html("&raquo; "+$.i18n('core-recon/access'));
-  this._elmts.rawServiceLink.html($.i18n('core-recon/service-api'));
-  this._elmts.or_proc_cellType.html($.i18n('core-recon/cell-type')+":");
-  this._elmts.or_proc_colDetail.html($.i18n('core-recon/col-detail')+":");
-  this._elmts.or_proc_againstType.html($.i18n('core-recon/against-type')+":");
+  this._elmts.or_proc_access.html($.i18n('core-recon/access-service'));
+  this._elmts.or_proc_cellType.html($.i18n('core-recon/cell-type'));
+  this._elmts.or_proc_colDetail.html($.i18n('core-recon/col-detail'));
+  this._elmts.or_proc_againstType.html($.i18n('core-recon/against-type'));
   this._elmts.or_proc_noType.html($.i18n('core-recon/no-type'));
   this._elmts.or_proc_autoMatch.html($.i18n('core-recon/auto-match'));
   this._elmts.or_proc_max_candidates.html($.i18n('core-recon/max-candidates'));
+  this._elmts.typeInput.attr('aria-label',$.i18n('core-recon/type'))
 
   this._elmts.rawServiceLink.attr("href", this._service.url);
+
+  this._elmts.againstType.on('change', function() {
+    self._elmts.typeInput.trigger('focus').trigger('select');
+  });
 
   this._guessTypes(function() {
     self._populatePanel();
@@ -140,15 +149,15 @@ ReconStandardServicePanel.prototype._populatePanel = function() {
 
       td0.width = "1%";
       var radio = $('<input type="radio" name="type-choice">')
-      .attr("value", typeID)
+      .val(typeID)
       .attr("typeName", typeName)
       .appendTo(td0)
-      .click(function() {
+      .on('click',function() {
         self._rewirePropertySuggests(this.value);
       });
 
       if (check) {
-        radio.attr("checked", "true");
+        radio.prop('checked', true);
       }
 
       if (typeName == typeID) {
@@ -171,9 +180,9 @@ ReconStandardServicePanel.prototype._populatePanel = function() {
 
     this._panel
     .find('input[name="type-choice"][value=""]')
-    .attr("checked", "true");
+    .prop('checked', true);
 
-    this._elmts.typeInput.focus();
+    this._elmts.typeInput.trigger('focus');
   }
 
   /*
@@ -196,7 +205,7 @@ ReconStandardServicePanel.prototype._populatePanel = function() {
     var td2 = tr.insertCell(2);
 
     $(td0).html(column.name);
-    $('<input type="checkbox" />')
+    $('<input type="checkbox" name="include" />')
     .attr("columnName", column.name)
     .appendTo(td1);
     $('<input size="25" name="property" />')
@@ -214,20 +223,24 @@ ReconStandardServicePanel.prototype._populatePanel = function() {
 
 ReconStandardServicePanel.prototype._wireEvents = function() {
   var self = this;
-  var input = this._elmts.typeInput.unbind();
+  var input = this._elmts.typeInput.off();
 
   if ("suggest" in this._service && "type" in this._service.suggest && this._service.suggest.type.service_url) {
     // Old style suggest API
     var suggestOptions = $.extend({}, this._service.suggest.type);
     suggestOptions.key = null;
     suggestOptions.query_param_name = "prefix";
+    // CORS/JSONP support
+    if (this._service.ui && this._service.ui.access) {
+      suggestOptions.access = this._service.ui.access;
+    }
     input.suggestT(suggestOptions);
   }
 
-  input.bind("fb-select", function(e, data) {
+  input.on("bind fb-select", function(e, data) {
     self._panel
     .find('input[name="type-choice"][value=""]')
-    .attr("checked", "true");
+    .prop('checked', true);
 
     self._rewirePropertySuggests(data.id);
   });
@@ -238,15 +251,19 @@ ReconStandardServicePanel.prototype._wireEvents = function() {
 ReconStandardServicePanel.prototype._rewirePropertySuggests = function(type) {
   var inputs = this._panel
   .find('input[name="property"]')
-  .unbind();
+  .off();
 
   if ("suggest" in this._service && "property" in this._service.suggest && this._service.suggest.property.service_url) {
     // Old style suggest API
     var suggestOptions = $.extend({}, this._service.suggest.property);
     suggestOptions.key = null;
     suggestOptions.query_param_name = "prefix";
+    // CORS/JSONP support
+    if (this._service.ui && this._service.ui.access) {
+      suggestOptions.access = this._service.ui.access;
+    }
     if (type) {
-      suggestOptions.ac_param = { schema: typeof type == "string" ? type : type.id };
+      suggestOptions.type = typeof type == "string" ? type : type.id;
     }
     inputs.suggestP(suggestOptions);
   }
@@ -264,6 +281,7 @@ ReconStandardServicePanel.prototype.start = function() {
   }
 
   var choices = this._panel.find('input[name="type-choice"]:checked');
+  var include = this._panel.find('input[name="include"]');
   if (choices !== null && choices.length > 0) {
     if (choices[0].value == '-') {
       type = null;
@@ -278,9 +296,9 @@ ReconStandardServicePanel.prototype.start = function() {
   var columnDetails = [];
   $.each(
     this._panel.find('input[name="property"]'),
-    function() {
+    function(index) {
       var property = $(this).data("data.suggest");
-      if (property && property.id) {
+      if (property && property.id && include[index].checked) {
         columnDetails.push({
           column: this.getAttribute("columnName"),
           property: {
@@ -289,8 +307,8 @@ ReconStandardServicePanel.prototype.start = function() {
           }
         });
       } else {
-        var property = $.trim(this.value);
-        if (property) {
+        var property = jQueryTrim(this.value);
+        if (property && include[index].checked) {
           columnDetails.push({
             column: this.getAttribute("columnName"),
             property: {

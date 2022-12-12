@@ -64,22 +64,35 @@ function formatRelativeDate(d) {
   var tomorrow = Date.today().add({ days: 1 });
 
   if (d.between(today, tomorrow)) {
-    return $.i18n('core-util-enc/today')+" " + d.toString("h:mm tt");
+    return $.i18n('core-util-enc/today', d.toString("h:mm tt"));
   } else if (d.between(last_week, today)) {
-    var diff = Math.floor(today.getDayOfYear() - d.getDayOfYear());
-    return (diff <= 1) ? ($.i18n('core-util-enc/yesterday')+" " + d.toString("h:mm tt")) : (diff + " "+$.i18n('core-util-enc/days-ago'));
+    var diff = Math.floor(daysIntoYear(today) - daysIntoYear(d));
+    return (diff <= 1) ? ($.i18n('core-util-enc/yesterday', d.toString("h:mm tt"))) : $.i18n('core-util-enc/days-ago', diff);
   } else if (d.between(last_month, today)) {
-    var diff = Math.floor((today.getDayOfYear() - d.getDayOfYear()) / 7);
+    var diff = Math.floor((daysIntoYear(today) - daysIntoYear(d)) / 7);
     if (diff < 1) {diff += 52};
-    return (diff == 1) ? $.i18n('core-util-enc/week-ago') : diff.toFixed(0) + " "+$.i18n('core-util-enc/weeks-ago') ;
+    return $.i18n('core-util-enc/weeks-ago', diff) ;
   } else if (d.between(almost_last_year, today)) {
     var diff = today.getMonth() - d.getMonth();
     if (diff < 1) {
       diff += 12;
     }
-    return (diff == 1) ? $.i18n('core-util-enc/month-ago') : diff + " "+ $.i18n('core-util-enc/months-ago');
+    return $.i18n('core-util-enc/months-ago', diff);
   } else {
     var diff = Math.floor(today.getYear() - d.getYear());
-    return (diff == 1) ? $.i18n('core-util-enc/year-ago') : diff + " "+$.i18n('core-util-enc/years-ago');
+    return $.i18n('core-util-enc/years-ago', diff);
   }
+}
+
+function daysIntoYear(date){
+  return (Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) - Date.UTC(date.getFullYear(), 0, 0)) / 24 / 60 / 60 / 1000;
+}
+
+function setInitialHeightTextArea(textarea) {
+  const textareaStyle = getComputedStyle(textarea);
+  const fontSizePx = textareaStyle.fontSize;
+  const fontSize = Number(fontSizePx.replace(/px$/, ''));
+  let initialHeight = Math.max(textarea.scrollHeight,Math.round(3*1.1*fontSize));
+  initialHeight = Math.min(initialHeight,Math.round(15*1.1*fontSize));
+  textarea.style.height = initialHeight+'px';
 }

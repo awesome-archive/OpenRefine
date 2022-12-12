@@ -7,7 +7,7 @@ Refine.SetLanguageUI = function(elmt) {
 	this._elmts = DOM.bind(elmt);
 
 	this._elmts.or_lang_label.text($.i18n('core-index-lang/label')+":");
-	this._elmts.set_lan_btn.attr("value", $.i18n('core-index-lang/send-req'));
+	this._elmts.set_lan_btn.val($.i18n('core-index-lang/send-req'));
 	
 
   $.ajax({
@@ -27,20 +27,23 @@ Refine.SetLanguageUI = function(elmt) {
     
   });
 
-	this._elmts.set_lan_btn.bind('click', function(e) {		
-		$.ajax({
-			url : "command/core/set-preference?",
-			type : "POST",
-			async : false,
-			data : {
-			  name : "userLang",
-				value : $("#langDD option:selected").val()
-			},
-			success : function(data) {
-				alert($.i18n('core-index-lang/page-reload'));
-				location.reload(true);
-			}
-		});
+	this._elmts.set_lan_btn.on('click', function(e) {		
+                Refine.wrapCSRF(function(token) {
+                    $.ajax({
+                            url : "command/core/set-preference?",
+                            type : "POST",
+                            async : false,
+                            data : {
+                               name : "userLang",
+                               value : JSON.stringify($("#langDD option:selected").val()),
+                               csrf_token: token 
+                            },
+                            success : function(data) {
+                                    alert($.i18n('core-index-lang/page-reload'));
+                                    location.reload(true);
+                            }
+                    });
+                });
 	});
 };
 

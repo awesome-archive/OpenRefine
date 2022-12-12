@@ -34,6 +34,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 package com.google.refine.commands;
 
 import java.io.IOException;
+import java.util.Collections;
+import java.util.Locale;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
@@ -43,29 +45,37 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.refine.ProjectManager;
 import com.google.refine.model.Project;
 import com.google.refine.preference.PreferenceStore;
+import com.google.refine.util.LocaleUtils;
 import com.google.refine.util.ParsingUtilities;
 
 public class SetPreferenceCommand extends Command {
+
     @Override
     public void doPost(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
-        
+        if (!hasValidCSRFToken(request)) {
+            respondCSRFError(response);
+            return;
+        }
+
         Project project = request.getParameter("project") != null ? getProject(request) : null;
-        PreferenceStore ps = project != null ? 
-                project.getMetadata().getPreferenceStore() : 
-                ProjectManager.singleton.getPreferenceStore();
-                
+        PreferenceStore ps = project != null ? project.getMetadata().getPreferenceStore() : ProjectManager.singleton.getPreferenceStore();
+
         String prefName = request.getParameter("name");
         String valueString = request.getParameter("value");
-        
+
         try {
             JsonNode o = valueString == null ? null : ParsingUtilities.mapper.readTree(valueString);
-            
+
             ps.put(prefName, PreferenceStore.loadObject(o));
-            
-            respond(response, "{ \"code\" : \"ok\" }");
+
+            respondJSON(response, Collections.singletonMap("code", "ok"));
         } catch (IOException e) {
             respondException(response, e);
+        }
+
+        if (prefName.equals("userLang")) {
+            LocaleUtils.setLocale(valueString);
         }
     }
 

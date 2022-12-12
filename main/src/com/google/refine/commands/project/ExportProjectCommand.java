@@ -47,6 +47,10 @@ import com.google.refine.model.Project;
 
 public class ExportProjectCommand extends Command {
 
+    /**
+     * This command uses POST but is left CSRF-unprotected as it does not incur a state change.
+     */
+
     @Override
     public void doPost(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {

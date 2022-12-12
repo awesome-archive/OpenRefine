@@ -24,11 +24,11 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  ******************************************************************************/
+
 package com.google.refine.expr.functions;
 
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Calendar;
 import java.util.Properties;
 
 import org.slf4j.LoggerFactory;
@@ -42,8 +42,6 @@ import com.google.refine.expr.EvalError;
 import com.google.refine.expr.HasFieldsListImpl;
 import com.google.refine.expr.WrappedCell;
 import com.google.refine.expr.WrappedRow;
-import com.google.refine.grel.ControlFunctionRegistry;
-import com.google.refine.grel.Function;
 import com.google.refine.model.Cell;
 import com.google.refine.model.Project;
 import com.google.refine.model.Row;
@@ -53,9 +51,9 @@ import com.google.refine.util.TestUtils;
  * Test cases for cross function.
  */
 public class CrossTests extends RefineTest {
-    static Properties bindings;
+
     private static OffsetDateTime dateTimeValue = OffsetDateTime.parse("2017-05-12T05:45:00+00:00", DateTimeFormatter.ISO_OFFSET_DATE_TIME);
-    
+
     @Override
     @BeforeTest
     public void init() {
@@ -67,29 +65,32 @@ public class CrossTests extends RefineTest {
     Project projectAddress;
     Project projectDuplicate1;
     Project projectDuplicate2;
-    
+
     // data from: https://github.com/OpenRefine/OpenRefine/wiki/GREL-Other-Functions
     @BeforeMethod
     public void SetUp() {
         bindings = new Properties();
-        
+
         String projectName = "My Address Book";
         String input = "friend,address\n"
-                        + "john,120 Main St.\n"
-                        + "mary,50 Broadway Ave.\n"
-                        + "john,999 XXXXXX St.\n"                       // john's 2nd address
-                        + "anne,17 Morning Crescent\n"
-                        + "2017-05-12T05:45:00Z,dateTime\n"
-                        + "1600,integer\n"
-                        + "true,boolean\n";
+                + "john,120 Main St.\n"
+                + "mary,50 Broadway Ave.\n"
+                + "john,999 XXXXXX St.\n" // john's 2nd address
+                + "anne,17 Morning Crescent\n"
+                + "2017-05-12T05:45:00Z,dateTime\n"
+                + "1600,integer\n"
+                + "123456789123456789,long\n"
+                + "true,boolean\n"
+                + "3.14,double\n";
         projectAddress = createCSVProject(projectName, input);
-    
+
         projectName = "Christmas Gifts";
-        input = "gift,recipient\n"   
+        input = "gift,recipient\n"
                 + "lamp,mary\n"
                 + "clock,john\n"
                 + "dateTime,2017-05-12T05:45:00Z\n"
                 + "integer,1600\n"
+                + "123456789123456789,long\n"
                 + "boolean,true\n";
         projectGift = createCSVProject(projectName, input);
         projectName = "Duplicate";
@@ -97,145 +98,278 @@ public class CrossTests extends RefineTest {
         projectDuplicate1 = createCSVProject(projectName, input);
         projectDuplicate2 = createCSVProject(projectName, input);
 
-        
         bindings.put("project", projectGift);
-        
-        //Add some non-string value cells to each project
+
+        // Add some non-string value cells to each project
         projectAddress.rows.get(4).cells.set(0, new Cell(dateTimeValue, null));
         projectAddress.rows.get(5).cells.set(0, new Cell(1600, null));
-        projectAddress.rows.get(6).cells.set(0, new Cell(true, null));
+        projectAddress.rows.get(6).cells.set(0, new Cell(123456789123456789L, null));
+        projectAddress.rows.get(7).cells.set(0, new Cell(true, null));
+        projectAddress.rows.get(8).cells.set(0, new Cell(3.14, null));
         projectGift.rows.get(2).cells.set(1, new Cell(dateTimeValue, null));
         projectGift.rows.get(3).cells.set(1, new Cell(1600, null));
-        projectGift.rows.get(4).cells.set(1, new Cell(true, null));
-        
+        projectGift.rows.get(4).cells.set(1, new Cell(123456789123456789L, null));
+        projectGift.rows.get(5).cells.set(1, new Cell(true, null));
+
         // add a column address based on column recipient
         bindings.put("columnName", "recipient");
     }
-    
+
     @Test
     public void crossFunctionMissingProject() throws Exception {
         String nonExistentProject = "NOPROJECT";
-        Assert.assertEquals(((EvalError) invoke("cross", "Anne", nonExistentProject, "friend")).message, 
+        Assert.assertEquals(((EvalError) invoke("cross", "Anne", nonExistentProject, "friend")).message,
                 "Unable to find project with name: " + nonExistentProject);
     }
-    
+
     @Test
     public void crossFunctionMultipleProjects() throws Exception {
         String duplicateProjectName = "Duplicate";
-        Assert.assertEquals(((EvalError) invoke("cross", "Anne", duplicateProjectName, "friend")).message, 
+        Assert.assertEquals(((EvalError) invoke("cross", "Anne", duplicateProjectName, "friend")).message,
                 "2 projects found with name: " + duplicateProjectName);
     }
-    
+
     @Test
     public void crossFunctionMissingColumn() throws Exception {
         String nonExistentColumn = "NoColumn";
         String projectName = "My Address Book";
-        Assert.assertEquals(((EvalError) invoke("cross", "mary", projectName, nonExistentColumn)).message, 
+        Assert.assertEquals(((EvalError) invoke("cross", "mary", projectName, nonExistentColumn)).message,
                 "Unable to find column " + nonExistentColumn + " in project " + projectName);
     }
-    
+
     @Test
-    public void crossFunctionOneToOneTest() throws Exception {
-        Row row = ((Row)((WrappedRow) ((HasFieldsListImpl) invoke("cross", "mary", "My Address Book", "friend")).get(0)).row);
+    public void crossFunctionSameColumnTest() throws Exception {
+        Project project = (Project) bindings.get("project");
+        Cell c = project.rows.get(0).cells.get(1);
+        WrappedCell lookup = new WrappedCell(project, "recipient", c);
+        Row row = (((WrappedRow) ((HasFieldsListImpl) invoke("cross", lookup, "My Address Book", "friend")).get(0)).row);
         String address = row.getCell(1).value.toString();
         Assert.assertEquals(address, "50 Broadway Ave.");
     }
-    
-    /**  
-     * To demonstrate that the cross function can join multiple rows.
+
+    /**
+     * The result shouldn't depend on the based column in "bindings" when the first argument is a WrappedCell instance.
+     */
+    @Test
+    public void crossFunctionDifferentColumnTest() throws Exception {
+        Project project = (Project) bindings.get("project");
+        bindings.put("columnName", "gift"); // change the based column
+        Cell c = project.rows.get(0).cells.get(1);
+        WrappedCell lookup = new WrappedCell(project, "recipient", c);
+        Row row = (((WrappedRow) ((HasFieldsListImpl) invoke("cross", lookup, "My Address Book", "friend")).get(0)).row);
+        String address = row.getCell(1).value.toString();
+        Assert.assertEquals(address, "50 Broadway Ave.");
+    }
+
+    @Test
+    // lookup the row with index 0 in the current project
+    public void crossFunctionOneArgumentTest() throws Exception {
+        Row row = (((WrappedRow) ((HasFieldsListImpl) invoke("cross", 0)).get(0)).row);
+        String address = row.getCell(1).value.toString();
+        Assert.assertEquals(address, "mary");
+    }
+
+    @Test
+    public void crossFunctionOneArgumentTest1() throws Exception {
+        Row row = (((WrappedRow) ((HasFieldsListImpl) invoke("cross", 0, "")).get(0)).row);
+        String address = row.getCell(1).value.toString();
+        Assert.assertEquals(address, "mary");
+    }
+
+    @Test
+    public void crossFunctionOneArgumentTest2() throws Exception {
+        Row row = (((WrappedRow) ((HasFieldsListImpl) invoke("cross", 1, "", "")).get(0)).row);
+        String address = row.getCell(1).value.toString();
+        Assert.assertEquals(address, "john");
+    }
+
+    @Test
+    public void crossFunctionTwoArgumentTest() throws Exception {
+        Row row = (((WrappedRow) ((HasFieldsListImpl) invoke("cross", "lamp", "", "gift")).get(0)).row);
+        String address = row.getCell(1).value.toString();
+        Assert.assertEquals(address, "mary");
+    }
+
+    @Test
+    public void crossFunctionTwoArgumentTest1() throws Exception {
+        Row row = (((WrappedRow) ((HasFieldsListImpl) invoke("cross", 0, "My Address Book")).get(0)).row);
+        String address = row.getCell(1).value.toString();
+        Assert.assertEquals(address, "120 Main St.");
+    }
+
+    @Test
+    public void crossFunctionTwoArgumentTest2() throws Exception {
+        Row row = (((WrappedRow) ((HasFieldsListImpl) invoke("cross", 0, "My Address Book", "")).get(0)).row);
+        String address = row.getCell(1).value.toString();
+        Assert.assertEquals(address, "120 Main St.");
+    }
+
+    @Test
+    public void crossFunctionOneToOneTest() throws Exception {
+        Row row = (((WrappedRow) ((HasFieldsListImpl) invoke("cross", "mary", "My Address Book", "friend")).get(0)).row);
+        String address = row.getCell(1).value.toString();
+        Assert.assertEquals(address, "50 Broadway Ave.");
+    }
+
+    /**
+     * To demonstrate that the cross function can look up multiple rows.
      */
     @Test
     public void crossFunctionOneToManyTest() throws Exception {
-        Row row = ((Row)((WrappedRow) ((HasFieldsListImpl) invoke("cross", "john", "My Address Book", "friend")).get(1)).row);
+        Row row = (((WrappedRow) ((HasFieldsListImpl) invoke("cross", "john", "My Address Book", "friend")).get(1)).row);
         String address = row.getCell(1).value.toString();
         Assert.assertEquals(address, "999 XXXXXX St.");
     }
-    
 
     @Test
     public void crossFunctionCaseSensitiveTest() throws Exception {
         Assert.assertNull(invoke("cross", "Anne", "My Address Book", "friend"));
     }
-    
+
     @Test
     public void crossFunctionDateTimeTest() throws Exception {
         Project project = (Project) bindings.get("project");
         Cell c = project.rows.get(2).cells.get(1);
         WrappedCell lookup = new WrappedCell(project, "recipient", c);
-        Row row = ((Row)((WrappedRow) ((HasFieldsListImpl) invoke("cross", lookup, "My Address Book", "friend")).get(0)).row);
+        Row row = (((WrappedRow) ((HasFieldsListImpl) invoke("cross", lookup, "My Address Book", "friend")).get(0)).row);
         String address = row.getCell(1).value.toString();
         Assert.assertEquals(address, "dateTime");
     }
-    
+
     @Test
     public void crossFunctionIntegerTest() throws Exception {
         Project project = (Project) bindings.get("project");
         Cell c = project.rows.get(3).cells.get(1);
         WrappedCell lookup = new WrappedCell(project, "recipient", c);
-        Row row = ((Row)((WrappedRow) ((HasFieldsListImpl) invoke("cross", lookup, "My Address Book", "friend")).get(0)).row);
+        Row row = (((WrappedRow) ((HasFieldsListImpl) invoke("cross", lookup, "My Address Book", "friend")).get(0)).row);
         String address = row.getCell(1).value.toString();
         Assert.assertEquals(address, "integer");
     }
-    
+
     @Test
     public void crossFunctionBooleanTest() throws Exception {
         Project project = (Project) bindings.get("project");
-        Cell c = project.rows.get(4).cells.get(1);
+        Cell c = project.rows.get(5).cells.get(1);
         WrappedCell lookup = new WrappedCell(project, "recipient", c);
-        Row row = ((Row)((WrappedRow) ((HasFieldsListImpl) invoke("cross", lookup, "My Address Book", "friend")).get(0)).row);
+        Row row = (((WrappedRow) ((HasFieldsListImpl) invoke("cross", lookup, "My Address Book", "friend")).get(0)).row);
         String address = row.getCell(1).value.toString();
         Assert.assertEquals(address, "boolean");
     }
-    
-    
+
+    @Test
+    public void crossFunctionIntegerArgumentTest() throws Exception {
+        Row row = (((WrappedRow) ((HasFieldsListImpl) invoke("cross", 1600, "My Address Book", "friend")).get(0)).row);
+        String address = row.getCell(1).value.toString();
+        Assert.assertEquals(address, "integer");
+    }
+
+    @Test
+    public void crossFunctionIntegerArgumentTest1() throws Exception {
+        Row row = (((WrappedRow) ((HasFieldsListImpl) invoke("cross", 1600L, "My Address Book", "friend")).get(0)).row);
+        String address = row.getCell(1).value.toString();
+        Assert.assertEquals(address, "integer");
+    }
+
+    @Test
+    public void crossFunctionIntegerArgumentTest2() throws Exception {
+        Row row = (((WrappedRow) ((HasFieldsListImpl) invoke("cross", "1600", "My Address Book", "friend")).get(0)).row);
+        String address = row.getCell(1).value.toString();
+        Assert.assertEquals(address, "integer");
+    }
+
+    /**
+     * Two values will match if and only if they have the same string representation. In this case, "1600.0" doesn't
+     * equal to "1600".
+     */
+    @Test
+    public void crossFunctionIntegerArgumentTest3() throws Exception {
+        Assert.assertNull(invoke("cross", "1600.0", "My Address Book", "friend"));
+    }
+
+    @Test
+    public void crossFunctionLongArgumentTest() throws Exception {
+        Row row = (((WrappedRow) ((HasFieldsListImpl) invoke("cross", 123456789123456789L, "My Address Book", "friend")).get(0)).row);
+        String address = row.getCell(1).value.toString();
+        Assert.assertEquals(address, "long");
+    }
+
+    @Test
+    public void crossFunctionLongArgumentTest1() throws Exception {
+        Row row = (((WrappedRow) ((HasFieldsListImpl) invoke("cross", "123456789123456789", "My Address Book", "friend")).get(0)).row);
+        String address = row.getCell(1).value.toString();
+        Assert.assertEquals(address, "long");
+    }
+
+    @Test
+    public void crossFunctionDoubleArgumentTest() throws Exception {
+        Row row = (((WrappedRow) ((HasFieldsListImpl) invoke("cross", 3.14, "My Address Book", "friend")).get(0)).row);
+        String address = row.getCell(1).value.toString();
+        Assert.assertEquals(address, "double");
+    }
+
+    @Test
+    public void crossFunctionDoubleArgumentTest1() throws Exception {
+        Row row = (((WrappedRow) ((HasFieldsListImpl) invoke("cross", 3.14f, "My Address Book", "friend")).get(0)).row);
+        String address = row.getCell(1).value.toString();
+        Assert.assertEquals(address, "double");
+    }
+
+    @Test
+    public void crossFunctionDoubleArgumentTest2() throws Exception {
+        Row row = (((WrappedRow) ((HasFieldsListImpl) invoke("cross", "3.14", "My Address Book", "friend")).get(0)).row);
+        String address = row.getCell(1).value.toString();
+        Assert.assertEquals(address, "double");
+    }
+
+    @Test
+    public void crossFunctionDateTimeArgumentTest() throws Exception {
+        Row row = (((WrappedRow) ((HasFieldsListImpl) invoke("cross", dateTimeValue, "My Address Book", "friend")).get(0)).row);
+        String address = row.getCell(1).value.toString();
+        Assert.assertEquals(address, "dateTime");
+    }
+
+    @Test
+    public void crossFunctionDateTimeArgumentTest1() throws Exception {
+        Row row = (((WrappedRow) ((HasFieldsListImpl) invoke("cross", dateTimeValue.toString(), "My Address Book", "friend")).get(0)).row);
+        String address = row.getCell(1).value.toString();
+        Assert.assertEquals(address, "dateTime");
+    }
+
+    @Test
+    public void crossFunctionBooleanArgumentTest() throws Exception {
+        Row row = (((WrappedRow) ((HasFieldsListImpl) invoke("cross", true, "My Address Book", "friend")).get(0)).row);
+        String address = row.getCell(1).value.toString();
+        Assert.assertEquals(address, "boolean");
+    }
+
+    @Test
+    public void crossFunctionBooleanArgumentTest1() throws Exception {
+        Row row = (((WrappedRow) ((HasFieldsListImpl) invoke("cross", "true", "My Address Book", "friend")).get(0)).row);
+        String address = row.getCell(1).value.toString();
+        Assert.assertEquals(address, "boolean");
+    }
+
     /**
      * If no match, return null.
      * 
-     * But if user still apply grel:value.cross("My Address Book", "friend")[0].cells["address"].value, 
-     * from the "Preview", the target cell shows "Error: java.lang.IndexOutOfBoundsException: Index: 0, Size: 0".
-     * It will still end up with blank if the onError set so.
+     * But if user still apply grel:value.cross("My Address Book", "friend")[0].cells["address"].value, from the
+     * "Preview", the target cell shows "Error: java.lang.IndexOutOfBoundsException: Index: 0, Size: 0". It will still
+     * end up with blank if the onError set so.
      */
     @Test
     public void crossFunctionMatchNotFoundTest() throws Exception {
         Assert.assertNull(invoke("cross", "NON-EXIST", "My Address Book", "friend"));
     }
-     
+
     /**
-     *  
-     *  rest of cells shows "Error: cross expects a string or cell, a project name to join with, and a column name in that project"
+     * 
+     * rest of cells shows "Error: cross expects a cell or cell value, a project name to look up, and a column name in
+     * that project"
      */
     @Test
     public void crossFunctionNonLiteralValue() throws Exception {
-        Assert.assertEquals(((EvalError) invoke("cross", 1, "My Address Book", "friend")).message, 
-                "cross expects a string or cell, a project name to join with, and a column name in that project");
-        
-        Assert.assertEquals(((EvalError) invoke("cross", null, "My Address Book", "friend")).message, 
-                "cross expects a string or cell, a project name to join with, and a column name in that project");
-        
-        Assert.assertEquals(((EvalError) invoke("cross", Calendar.getInstance(), "My Address Book", "friend")).message, 
-                "cross expects a string or cell, a project name to join with, and a column name in that project");
+        Assert.assertEquals(((EvalError) invoke("cross", null, "My Address Book", "friend")).message,
+                "cross expects a cell or value, a project name to look up (optional), and a column name in that project (optional)");
     }
-    
-    /**
-     * Lookup a control function by name and invoke it with a variable number of args
-     */
-    private static Object invoke(String name,Object... args) {
-        // registry uses static initializer, so no need to set it up
-        Function function = ControlFunctionRegistry.getFunction(name);
-        if (function == null) {
-            throw new IllegalArgumentException("Unknown function "+name);
-        }
-        if (args == null) {
-            return function.call(bindings,new Object[0]);
-        } else {
-            return function.call(bindings,args);
-        }
-    }
-    
-    @Test
-    public void serializeCross() {
-        String json = "{\"description\":\"join with another project by column\",\"params\":\"cell c or string value, string projectName, string columnName\",\"returns\":\"array\"}";
-        TestUtils.isSerializedTo(new Cross(), json);
-    }
-}
 
+}

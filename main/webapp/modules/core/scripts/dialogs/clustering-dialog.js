@@ -54,6 +54,7 @@ ClusteringDialog.prototype._createDialog = function() {
     this._elmts.or_dialog_descr.html($.i18n('core-dialogs/cluster-descr'));
     this._elmts.or_dialog_findMore.html($.i18n('core-dialogs/find-more'));
     this._elmts.or_dialog_method.html($.i18n('core-dialogs/method'));
+    this._elmts.or_dialog_distance.html($.i18n('core-dialogs/distance-fun'));
     this._elmts.or_dialog_keyCollision.html($.i18n('core-dialogs/key-collision'));
     this._elmts.or_dialog_neighbor.html($.i18n('core-dialogs/nearest-neighbor'));
     this._elmts.or_dialog_keying.html($.i18n('core-dialogs/keying-function'));
@@ -61,24 +62,24 @@ ClusteringDialog.prototype._createDialog = function() {
     this._elmts.or_dialog_radius.html($.i18n('core-dialogs/ngram-radius'));
     this._elmts.or_dialog_blockChars.html($.i18n('core-dialogs/block-chars'));
     this._elmts.selectAllButton.html($.i18n('core-buttons/select-all'));
-    this._elmts.deselectAllButton.html($.i18n('core-buttons/unselect-all'));
+    this._elmts.deselectAllButton.html($.i18n('core-buttons/deselect-all'));
     this._elmts.exportClusterButton.html($.i18n('core-buttons/export-cluster'));
     this._elmts.applyReClusterButton.html($.i18n('core-buttons/merge-cluster'));
     this._elmts.applyCloseButton.html($.i18n('core-buttons/merge-close'));
     this._elmts.closeButton.html($.i18n('core-buttons/close'));
 
-    this._elmts.methodSelector.change(function() {
+    this._elmts.methodSelector.on('change',function() {
         var selection = $(this).find("option:selected").text();
         if (selection == $.i18n('core-dialogs/key-collision')) {
             dialog.find(".binning-controls").show();
             dialog.find(".knn-controls").hide();
             self._method = "binning";
-            self._elmts.keyingFunctionSelector.change();
+            self._elmts.keyingFunctionSelector.trigger('change');
         } else if (selection === $.i18n('core-dialogs/nearest-neighbor')) {
             dialog.find(".binning-controls").hide();
             dialog.find(".knn-controls").show();
             self._method = "knn";
-            self._elmts.distanceFunctionSelector.change();
+            self._elmts.distanceFunctionSelector.trigger('change');
         }
     });
 
@@ -89,8 +90,8 @@ ClusteringDialog.prototype._createDialog = function() {
         params_changer();
     };
 
-    this._elmts.keyingFunctionSelector.change(changer);
-    this._elmts.distanceFunctionSelector.change(changer);
+    this._elmts.keyingFunctionSelector.on('change',changer);
+    this._elmts.distanceFunctionSelector.on('change',changer);
 
     var params_changer = function() {
         self._params = {};
@@ -109,20 +110,22 @@ ClusteringDialog.prototype._createDialog = function() {
         self._cluster();
     };
 
-    this._elmts.ngramSize.change(params_changer);
-    this._elmts.radius.change(params_changer);
-    this._elmts.ngramBlock.change(params_changer);
+    this._elmts.ngramSize.on('change',params_changer);
+    this._elmts.radius.on('change',params_changer);
+    this._elmts.ngramBlock.on('change',params_changer);
 
-    this._elmts.selectAllButton.click(function() { self._selectAll(); });
-    this._elmts.deselectAllButton.click(function() { self._deselectAll(); });
-    this._elmts.exportClusterButton.click(function() { self._onExportCluster(); });
-    this._elmts.applyReClusterButton.click(function() { self._onApplyReCluster(); });
-    this._elmts.applyCloseButton.click(function() { self._onApplyClose(); });
-    this._elmts.closeButton.click(function() { self._dismiss(); });
+    this._elmts.selectAllButton.on('click',function() { self._selectAll(); });
+    this._elmts.deselectAllButton.on('click',function() { self._deselectAll(); });
+    this._elmts.exportClusterButton.on('click',function() { self._onExportCluster(); });
+    this._elmts.applyReClusterButton.on('click',function() { self._onApplyReCluster(); });
+    this._elmts.applyCloseButton.on('click',function() { self._onApplyClose(); });
+    this._elmts.closeButton.on('click',function() { self._dismiss(); });
+
+    self._level = DialogSystem.showDialog(dialog);
 
     // Fill in all the keyers and distances
     $.get("command/core/get-clustering-functions-and-distances")
-    .success(function(data) {
+    .done(function(data) {
        var keyers = data.keyers != null ? data.keyers : [];
        var distances = data.distances != null ? data.distances : [];
        var i = 0;
@@ -132,11 +135,11 @@ ClusteringDialog.prototype._createDialog = function() {
               label = keyers[i];
           }
           var option = $('<option></option>')
-             .attr('value', keyers[i])
+             .val(keyers[i])
              .text(label)
              .appendTo(self._elmts.keyingFunctionSelector);
           if (i == 0) {
-             option.attr('selected', 'true');
+             option.prop('selected', 'true');
           }
        }
        for(i = 0; i < distances.length; i++) {
@@ -145,16 +148,15 @@ ClusteringDialog.prototype._createDialog = function() {
               label = distances[i];
           }
           var option = $('<option></option>')
-             .attr('value', distances[i])
+             .val(distances[i])
              .text(label)
              .appendTo(self._elmts.distanceFunctionSelector);
           if (i == 0) {
-             option.attr('selected', 'true');
+             option.prop('selected', 'true');
           }
        }
-       self._level = DialogSystem.showDialog(dialog);
     })
-    .error(function(error) {
+    .fail(function(error) {
             alert($.i18n('core-dialogs/no-clustering-functions-and-distances'));
     });
 };
@@ -165,6 +167,9 @@ ClusteringDialog.prototype._renderTable = function(clusters) {
     var container = this._elmts.tableContainer;
 
     if (clusters.length > 0) {
+        // TODO: This will never get rendered because we're blocking rendering
+        container.empty().html('<div>Processing clusters...</div>');
+
         var table = $('<table></table>').addClass("clustering-dialog-entry-table")[0];
 
         var trHead = table.insertRow(table.rows.length);
@@ -175,13 +180,24 @@ ClusteringDialog.prototype._renderTable = function(clusters) {
         $(trHead.insertCell(3)).text($.i18n('core-dialogs/merge'));
         $(trHead.insertCell(4)).text($.i18n('core-dialogs/new-cell-val'));
 
-        var renderCluster = function(cluster) {
-            var tr = table.insertRow(table.rows.length);
-            tr.className = table.rows.length % 2 === 0 ? "odd" : "even";
+        var entryTemplate = document.createElement('a');
+        entryTemplate.href = "javascript:{}";
+        entryTemplate.title = $.i18n('core-dialogs/use-this-val');
 
-            $(tr.insertCell(0)).text(cluster.choices.length);
+        var browseLinkTemplate = $('<a target="_new" title="'+$.i18n('core-dialogs/browse-only-these')+'">'+$.i18n('core-dialogs/browse-this-cluster')+'</a>')
+                .addClass("clustering-dialog-browse-focus")
+                .css("visibility","hidden")
 
-            $(tr.insertCell(1)).text(cluster.rowCount);
+
+        var renderCluster = function(cluster, index) {
+            var tr = table.insertRow();
+            tr.className = index % 2 === 0 ? "odd" : "even"; // TODO: Unused?
+
+            var cell = tr.insertCell()
+            cell.textContent = cluster.choices.length.toString();
+
+            cell = tr.insertCell();
+            cell.textContent = cluster.rowCount.toString();
 
             var facet = {
                 "c": {
@@ -197,9 +213,8 @@ ClusteringDialog.prototype._renderTable = function(clusters) {
                 ]
             };
 
-            var ul = $('<ul></ul>');
+            var ul = document.createElement('ul');
             var choices = cluster.choices;
-            var rowCount = 0;
             var onClick = function() {
               var parent = $(this).closest("tr");
               var value = $(this).text();
@@ -207,22 +222,26 @@ ClusteringDialog.prototype._renderTable = function(clusters) {
 
               parent.find("input[type='text']").val(value);
               var checkbox = parent.find("input[type='checkbox']");
-              checkbox.prop('checked', true).change();
+              checkbox.prop('checked', true).trigger('change');
               return false;
             };
             for (var c = 0; c < choices.length; c++) {
                 var choice = choices[c];
-                var li = $('<li></li>');
-                $('<a href="javascript:{}" title='+$.i18n('core-dialogs/use-this-val')+'></a>').text(choice.v).click(onClick).appendTo(li);
-                $('<span></span>').text("(" + choice.c + " rows)").addClass("clustering-dialog-entry-count").appendTo(li);
-                rowCount += choice.c;
+                var li = document.createElement('li');
+                var entry = entryTemplate.cloneNode();
+                entry.textContent = choice.v.toString().replaceAll(' ', '\xa0');
+                entry.addEventListener('click', onClick);
+                li.append(entry);
+                if (choice.c > 1) {
+                  $('<span></span>').text($.i18n("core-dialogs/cluster-rows", choice.c)).addClass("clustering-dialog-entry-count").appendTo(li);
+                }
                 facet.s[c] = {
                     "v": {
                         "v":choice.v,
                         "l":choice.v
                     }
                 };
-                li.appendTo(ul);
+                ul.append(li);
             }
 
             var params = [
@@ -233,46 +252,51 @@ ClusteringDialog.prototype._renderTable = function(clusters) {
             ];
             var url = "project?" + params.join("&");
 
-            var div = $('<div></div>').addClass("clustering-dialog-value-focus");
+            var div = document.createElement('div');
+            div.class = "clustering-dialog-value-focus";
 
-            var browseLink = $('<a target="_new" title="'+$.i18n('core-dialogs/browse-only-these')+'">'+$.i18n('core-dialogs/browse-this-cluster')+'</a>')
-                .addClass("clustering-dialog-browse-focus")
+            var browseLink = $(browseLinkTemplate).clone()
                 .attr("href",url)
-                .css("visibility","hidden")
                 .appendTo(div);
 
             $(tr.insertCell(2))
-                .mouseenter(function() { browseLink.css("visibility", "visible"); })
-                .mouseleave(function() { browseLink.css("visibility", "hidden"); })
+                .on('mouseenter',function() { browseLink.css("visibility", "visible"); })
+                .on('mouseleave',function() { browseLink.css("visibility", "hidden"); })
                 .append(ul)
                 .append(div);
 
             var editCheck = $('<input type="checkbox" />')
-                .change(function() {
+                .on('change',function() {
                     cluster.edit = this.checked;
                 }).appendTo(tr.insertCell(3));
 
             if (cluster.edit) {
-                editCheck.attr("checked", "true");
+                editCheck.prop('checked', true);
             }
 
-            var input = $('<input type="text" size="25" />')
-                .attr("value", cluster.value)
-                .bind("keyup change input",function() {
+            $('<input type="text" size="25" />')
+                .val(cluster.value)
+                .on("keyup change input",function() {
                     cluster.value = this.value;
                 }).appendTo(tr.insertCell(4));
+
+            return choices.length;
         };
 
-        for (var i = 0; i < clusters.length; i++) {
-            renderCluster(clusters[i]);
+        // TODO: Make this a preference "ui.clustering.choices.limit"
+        var maxRenderRows = 5000;
+        var totalRows = 0;
+        for (var clusterIndex = 0; clusterIndex < clusters.length && totalRows < maxRenderRows; clusterIndex++) {
+            totalRows += renderCluster(clusters[clusterIndex], clusterIndex);
         }
 
         container.empty().append(table);
 
         this._elmts.resultSummary.html(
-            (clusters.length === this._clusters.length) ?
-                ("<b>" + this._clusters.length + "</b> cluster" + ((this._clusters.length != 1) ? "s" : "") + " "+$.i18n('core-dialogs/found')) :
-                ("<b>" + clusters.length + "</b> cluster" + ((clusters.length != 1) ? "s" : "") + " "+$.i18n('core-dialogs/filtered-from')+ this._clusters.length +$.i18n('core-dialogs/from-total') )
+            ((totalRows >= maxRenderRows) ? $.i18n('core-dialogs/cluster-row-limit-exceeded', maxRenderRows) + '<br/> ' : '') +
+            ((clusterIndex === this._clusters.length) ?
+                $.i18n('core-dialogs/clusters-found', this._clusters.length) :
+                $.i18n('core-dialogs/clusters-filtered', clusterIndex, this._clusters.length))
         );
 
     } else {
@@ -283,6 +307,8 @@ ClusteringDialog.prototype._renderTable = function(clusters) {
 };
 
 ClusteringDialog.prototype._cluster = function() {
+    $('#cluster-and-edit-dialog :input').prop('disabled', true);
+    $(".clustering-dialog-facet").css("display","none");
     var self = this;
 
     var container = this._elmts.tableContainer.html(
@@ -304,6 +330,8 @@ ClusteringDialog.prototype._cluster = function() {
         },
         function(data) {
             self._updateData(data);
+            $(".clustering-dialog-facet").css("display","block");
+            $('#cluster-and-edit-dialog :input').prop('disabled', false);
         },
         "json"
     );
@@ -343,11 +371,11 @@ ClusteringDialog.prototype._updateData = function(data) {
 };
 
 ClusteringDialog.prototype._selectAll = function() {
-    $(".clustering-dialog-entry-table input:not(:checked)").attr('checked', true).change();
+    $(".clustering-dialog-entry-table input:not(:checked)").prop('checked', true).trigger('change');
 };
 
 ClusteringDialog.prototype._deselectAll = function() {
-    $(".clustering-dialog-entry-table input:checked").attr('checked', false).change();
+    $(".clustering-dialog-entry-table input:checked").prop('checked', false).trigger('change');
 };
 
 ClusteringDialog.prototype._onApplyClose = function() {
@@ -545,11 +573,11 @@ ClusteringDialog.Facet = function(dialog, title, property, elmt, clusters) {
         this._histogram = new HistogramWidget(this._elmts.histogramContainer, { binColors: [ "#ccccff", "#6666ff" ] });
         this._sliderWidget = new SliderWidget(this._elmts.sliderWidgetDiv);
 
-        this._elmts.sliderWidgetDiv.bind("slide", function(evt, data) {
+        this._elmts.sliderWidgetDiv.on("slide", function(evt, data) {
             self._from = data.from;
             self._to = data.to;
             self._setRangeIndicators();
-        }).bind("stop", function(evt, data) {
+        }).on("stop", function(evt, data) {
             self._from = data.from;
             self._to = data.to;
             self._setRangeIndicators();
@@ -586,18 +614,18 @@ ClusteringDialog.Facet.prototype.update = function(clusters) {
 
     var bins = this._computeDistribution(clusters);
 
+    this._histogram.update(
+        this._min,
+        this._max,
+        this._step,
+        [ this._baseBins, bins ]
+    );
     this._sliderWidget.update(
         this._min,
         this._max,
         this._step,
         this._from,
         this._to
-    );
-    this._histogram.update(
-        this._min,
-        this._max,
-        this._step,
-        [ this._baseBins, bins ]
     );
 };
 

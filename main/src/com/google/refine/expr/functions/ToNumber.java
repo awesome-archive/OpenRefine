@@ -37,7 +37,9 @@ import java.util.Properties;
 
 import com.google.refine.expr.EvalError;
 import com.google.refine.grel.ControlFunctionRegistry;
+import com.google.refine.grel.EvalErrorMessage;
 import com.google.refine.grel.Function;
+import com.google.refine.grel.FunctionDescription;
 
 public class ToNumber implements Function {
 
@@ -47,36 +49,41 @@ public class ToNumber implements Function {
             if (args[0] instanceof Number) {
                 return args[0];
             } else {
-                String s = args[0].toString().trim();
-                if (s.length() > 0) {
-                    try {
-                        return Long.parseLong(s);
-                    } catch (NumberFormatException e) {
-                    }
-                    try {
-                        return Double.parseDouble(s);
-                    } catch (NumberFormatException e) {
-                        return new EvalError("Unable to parse as number");
-                    }
+                String s;
+                if (args[0] instanceof String) {
+                    s = (String) args[0];
                 } else {
-                    return new EvalError("Unable to parse as number");
+                    s = args[0].toString();
                 }
+                if (s.length() > 0) {
+                    if (!s.contains(".")) { // lightweight test for strings which will definitely fail
+                        try {
+                            return Long.valueOf(s, 10);
+                        } catch (NumberFormatException e) {
+                        }
+                    }
+                    try {
+                        return Double.valueOf(s);
+                    } catch (NumberFormatException e) {
+                    }
+                }
+                return new EvalError(EvalErrorMessage.unable_to_parse_as_number());
             }
         } else {
-            return new EvalError(ControlFunctionRegistry.getFunctionName(this) + " expects one non-null argument");
+            return new EvalError(EvalErrorMessage.expects_one_non_null_arg(ControlFunctionRegistry.getFunctionName(this)));
         }
     }
-    
+
     @Override
     public String getDescription() {
-        return "Returns o converted to a number";
+        return FunctionDescription.fun_to_number();
     }
-    
+
     @Override
     public String getParams() {
         return "o";
     }
-    
+
     @Override
     public String getReturns() {
         return "number";

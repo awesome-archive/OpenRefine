@@ -38,7 +38,7 @@ import java.io.Writer;
 import java.util.List;
 import java.util.Properties;
 
-import org.apache.commons.lang3.StringEscapeUtils;
+import org.apache.commons.text.StringEscapeUtils;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.refine.ProjectManager;
@@ -54,20 +54,21 @@ public class HtmlTableExporter implements WriterExporter {
 
     @Override
     public void export(final Project project, Properties params, Engine engine, final Writer writer)
-        throws IOException {
-        
+            throws IOException {
+
         TabularSerializer serializer = new TabularSerializer() {
+
             @Override
             public void startFile(JsonNode options) {
                 try {
                     writer.write("<html>\n");
                     writer.write("<head>\n");
-                    writer.write("<title>"); 
+                    writer.write("<title>");
                     writer.write(ProjectManager.singleton.getProjectMetadata(project.id).getName());
                     writer.write("</title>\n");
                     writer.write("<meta charset=\"utf-8\" />\n");
                     writer.write("</head>\n");
-    
+
                     writer.write("<body>\n");
                     writer.write("<table>\n");
                 } catch (IOException e) {
@@ -106,7 +107,7 @@ public class HtmlTableExporter implements WriterExporter {
                                     writer.write(StringEscapeUtils.escapeHtml4(cellData.link));
                                     writer.write("\">");
                                 }
-                                writer.write(StringEscapeUtils.escapeXml(cellData.text));
+                                writer.write(StringEscapeUtils.escapeXml10(cellData.text));
                                 if (cellData.link != null) {
                                     writer.write("</a>");
                                 }
@@ -120,7 +121,7 @@ public class HtmlTableExporter implements WriterExporter {
                 }
             }
         };
-        
+
         CustomizableTabularExporterUtilities.exportRows(
                 project, engine, params, serializer);
     }

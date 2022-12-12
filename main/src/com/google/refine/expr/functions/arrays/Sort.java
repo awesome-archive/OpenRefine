@@ -35,58 +35,67 @@ package com.google.refine.expr.functions.arrays;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Properties;
 
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.refine.expr.EvalError;
 import com.google.refine.grel.ControlFunctionRegistry;
+import com.google.refine.grel.EvalErrorMessage;
 import com.google.refine.grel.Function;
+import com.google.refine.grel.FunctionDescription;
 import com.google.refine.util.JSONUtilities;
 
 public class Sort implements Function {
 
     @Override
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({ "unchecked", "rawtypes" })
     public Object call(Properties bindings, Object[] args) {
         if (args.length == 1) {
             Object v = args[0];
-            
             if (v != null) {
                 if (v.getClass().isArray()) {
                     Object[] a = (Object[]) v;
-                    Object[] r = a.clone();
-                    
-                    Arrays.sort(r, 0, r.length);
-                    
+                    Comparable[] r = new Comparable[a.length];
+                    for (int i = 0; i < r.length; i++) {
+                        if (a[i] instanceof Comparable) {
+                            r[i] = (Comparable) a[i];
+                        } else if (a[i] == null) {
+                            r[i] = null;
+                        } else {
+                            // of uniform type");
+                            return new EvalError(EvalErrorMessage.expects_one_array_uniform(ControlFunctionRegistry.getFunctionName(this)));
+                        }
+                    }
+                    Arrays.sort(r, Comparator.nullsLast(Comparator.naturalOrder()));
                     return r;
                 } else if (v instanceof ArrayNode) {
-                    Object[] r = JSONUtilities.toArray((ArrayNode) v);
-                    
-                    Arrays.sort(r, 0, r.length);
-                    
+                    // FIXME: Probably need a test for this
+                    // Comparable[] is a (slight) lie since nulls can be included, but our comparator will handle them
+                    Comparable[] r = (Comparable[]) JSONUtilities.toSortableArray((ArrayNode) v);
+                    Arrays.sort(r, Comparator.nullsLast(Comparator.naturalOrder()));
                     return r;
                 } else if (v instanceof List<?>) {
                     List<? extends Comparable<Object>> a = (List<? extends Comparable<Object>>) v;
-                    Collections.sort(a);
-                    
+                    Collections.sort(a, Comparator.nullsLast(Comparator.naturalOrder()));
                     return a;
                 }
             }
         }
-        return new EvalError(ControlFunctionRegistry.getFunctionName(this) + " expects an array");
+        return new EvalError(EvalErrorMessage.expects_one_array(ControlFunctionRegistry.getFunctionName(this)));
     }
 
     @Override
     public String getDescription() {
-        return "Sorts array a";
+        return FunctionDescription.arr_sort();
     }
-    
+
     @Override
     public String getParams() {
-        return "array a";
+        return "array a of uniform type";
     }
-    
+
     @Override
     public String getReturns() {
         return "array";

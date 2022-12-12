@@ -38,6 +38,7 @@ import java.util.Properties;
 import com.google.refine.clustering.binning.FingerprintKeyer;
 import com.google.refine.clustering.binning.Keyer;
 import com.google.refine.grel.Function;
+import com.google.refine.grel.FunctionDescription;
 
 public class Fingerprint implements Function {
 
@@ -52,17 +53,17 @@ public class Fingerprint implements Function {
         }
         return null;
     }
-    
+
     @Override
     public String getDescription() {
-        return "Returns the fingerprint of s, a derived string that aims to be a more canonical form of it (this is mostly useful for finding clusters of strings related to the same information).";
+        return FunctionDescription.str_fingerprint();
     }
-    
+
     @Override
     public String getParams() {
         return "string s";
     }
-    
+
     @Override
     public String getReturns() {
         return "string";

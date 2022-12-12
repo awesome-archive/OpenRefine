@@ -38,6 +38,7 @@ import java.time.ZoneId;
 import java.util.Properties;
 
 import com.google.refine.grel.Function;
+import com.google.refine.grel.FunctionDescription;
 
 public class Now implements Function {
 
@@ -51,9 +52,9 @@ public class Now implements Function {
 
     @Override
     public String getDescription() {
-        return "Returns the current time";
+        return FunctionDescription.date_now();
     }
-    
+
     @Override
     public String getReturns() {
         return "date";

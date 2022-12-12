@@ -37,7 +37,10 @@ import java.util.Properties;
 
 import com.google.common.base.CharMatcher;
 import com.google.refine.expr.EvalError;
+import com.google.refine.grel.ControlFunctionRegistry;
+import com.google.refine.grel.EvalErrorMessage;
 import com.google.refine.grel.Function;
+import com.google.refine.grel.FunctionDescription;
 
 public class Trim implements Function {
 
@@ -46,21 +49,22 @@ public class Trim implements Function {
         if (args.length == 1) {
             Object s1 = args[0];
             if (s1 != null && s1 instanceof String) {
-                return CharMatcher.WHITESPACE.trimFrom((String) s1);
+                return CharMatcher.whitespace().trimFrom((String) s1);
             }
         }
-        return new EvalError("Invalid parameters");
+        return new EvalError(EvalErrorMessage.expects_one_string(ControlFunctionRegistry.getFunctionName(this)));
     }
+
     @Override
     public String getDescription() {
-        return "Returns copy of the string, with leading and trailing whitespace omitted.";
+        return FunctionDescription.str_trim();
     }
-    
+
     @Override
     public String getParams() {
         return "string s";
     }
-    
+
     @Override
     public String getReturns() {
         return "string";

@@ -37,33 +37,35 @@ import java.util.Properties;
 
 import com.google.refine.expr.EvalError;
 import com.google.refine.grel.ControlFunctionRegistry;
+import com.google.refine.grel.EvalErrorMessage;
 import com.google.refine.grel.Function;
+import com.google.refine.grel.FunctionDescription;
 
 public class Even implements Function {
 
     @Override
     public Object call(Properties bindings, Object[] args) {
-        if (args.length == 1 && args[0] != null && args[0] instanceof Number) {
+        if (args.length == 1 && args[0] instanceof Number) {
             return Even.roundUpToEven(((Number) args[0]).doubleValue());
         }
-        return new EvalError(ControlFunctionRegistry.getFunctionName(this) + " expects a number");
+        return new EvalError(EvalErrorMessage.expects_one_number(ControlFunctionRegistry.getFunctionName(this)));
     }
 
-    public static double roundUpToEven(double d){
+    public static double roundUpToEven(double d) {
         double temp = Math.ceil(d);
-        return ((temp % 2) == 0) ? temp : temp+1;
+        return ((temp % 2) == 0) ? temp : temp + 1;
     }
 
     @Override
     public String getDescription() {
-        return "Rounds the number up to the nearest even integer";
+        return FunctionDescription.math_even();
     }
-    
+
     @Override
     public String getParams() {
-        return "number d";
+        return "number n";
     }
-    
+
     @Override
     public String getReturns() {
         return "number";

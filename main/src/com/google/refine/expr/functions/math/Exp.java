@@ -35,7 +35,11 @@ package com.google.refine.expr.functions.math;
 
 import java.util.Properties;
 
+import com.google.refine.expr.EvalError;
+import com.google.refine.grel.ControlFunctionRegistry;
+import com.google.refine.grel.EvalErrorMessage;
 import com.google.refine.grel.Function;
+import com.google.refine.grel.FunctionDescription;
 
 public class Exp implements Function {
 
@@ -44,19 +48,19 @@ public class Exp implements Function {
         if (args.length == 1 && args[0] instanceof Number) {
             return Math.exp(((Number) args[0]).doubleValue());
         }
-        return null;
+        return new EvalError(EvalErrorMessage.expects_one_number(ControlFunctionRegistry.getFunctionName(this)));
     }
 
     @Override
     public String getDescription() {
-        return "Returns e^n";
+        return FunctionDescription.math_exp();
     }
-    
+
     @Override
     public String getParams() {
         return "number n";
     }
-    
+
     @Override
     public String getReturns() {
         return "number";

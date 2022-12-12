@@ -35,6 +35,9 @@ package com.google.refine.expr.functions.xml;
 
 import java.util.Properties;
 
+import com.google.refine.expr.functions.Type;
+import com.google.refine.grel.EvalErrorMessage;
+import com.google.refine.grel.FunctionDescription;
 import org.jsoup.Jsoup;
 import org.jsoup.parser.Parser;
 
@@ -46,39 +49,39 @@ public class ParseXml implements Function {
 
     @Override
     public Object call(Properties bindings, Object[] args) {
-        return call(bindings,args,"xml");
+        return call(bindings, args, "xml");
     }
-    
+
     public Object call(Properties bindings, Object[] args, String mode) {
         if (args.length == 1) {
             Object o1 = args[0];
             if (o1 != null && o1 instanceof String) {
-                if (mode == "html") {
+                if (mode.equals("html")) {
                     return Jsoup.parse(o1.toString());
-                } else if (mode == "xml") {
-                    return Jsoup.parse(o1.toString(), "",Parser.xmlParser());
+                } else if (mode.equals("xml")) {
+                    return Jsoup.parse(o1.toString(), "", Parser.xmlParser());
                 } else {
-                    return new EvalError(ControlFunctionRegistry.getFunctionName(this) + " unable to identify which parser to use");
+                    // parser to use");
+                    return new EvalError(EvalErrorMessage.unable_to_identify_parser(ControlFunctionRegistry.getFunctionName(this)));
                 }
             }
         }
-        return new EvalError(ControlFunctionRegistry.getFunctionName(this) + " expects a single String as an argument");
+        // argument");
+        return new EvalError(EvalErrorMessage.expects_one_string(ControlFunctionRegistry.getFunctionName(this)));
     }
-
 
     @Override
     public String getDescription() {
-    	return "Parses a string as XML";
+        return FunctionDescription.xml_parsexml();
     }
-    
+
     @Override
     public String getParams() {
         return "string s";
     }
-    
+
     @Override
     public String getReturns() {
-    	return "XML object";
+        return "XML object";
     }
 }
-

@@ -48,6 +48,7 @@ import com.google.refine.expr.functions.Jsonize;
 import com.google.refine.expr.functions.Length;
 import com.google.refine.expr.functions.Slice;
 import com.google.refine.expr.functions.ToDate;
+import com.google.refine.expr.functions.TimeSinceUnixEpochToDate;
 import com.google.refine.expr.functions.ToNumber;
 import com.google.refine.expr.functions.ToString;
 import com.google.refine.expr.functions.Type;
@@ -101,7 +102,10 @@ import com.google.refine.expr.functions.math.Tan;
 import com.google.refine.expr.functions.math.Tanh;
 import com.google.refine.expr.functions.strings.Chomp;
 import com.google.refine.expr.functions.strings.Contains;
+import com.google.refine.expr.functions.strings.Decode;
+import com.google.refine.expr.functions.strings.DetectLanguage;
 import com.google.refine.expr.functions.strings.Diff;
+import com.google.refine.expr.functions.strings.Encode;
 import com.google.refine.expr.functions.strings.EndsWith;
 import com.google.refine.expr.functions.strings.Escape;
 import com.google.refine.expr.functions.strings.Find;
@@ -113,6 +117,7 @@ import com.google.refine.expr.functions.strings.Match;
 import com.google.refine.expr.functions.strings.NGram;
 import com.google.refine.expr.functions.strings.NGramFingerprint;
 import com.google.refine.expr.functions.strings.ParseJson;
+import com.google.refine.expr.functions.strings.ParseUri;
 import com.google.refine.expr.functions.strings.Partition;
 import com.google.refine.expr.functions.strings.Phonetic;
 import com.google.refine.expr.functions.strings.RPartition;
@@ -120,6 +125,7 @@ import com.google.refine.expr.functions.strings.Range;
 import com.google.refine.expr.functions.strings.Reinterpret;
 import com.google.refine.expr.functions.strings.Replace;
 import com.google.refine.expr.functions.strings.ReplaceChars;
+import com.google.refine.expr.functions.strings.ReplaceEach;
 import com.google.refine.expr.functions.strings.SHA1;
 import com.google.refine.expr.functions.strings.SmartSplit;
 import com.google.refine.expr.functions.strings.Split;
@@ -137,8 +143,11 @@ import com.google.refine.expr.functions.xml.InnerXml;
 import com.google.refine.expr.functions.xml.OwnText;
 import com.google.refine.expr.functions.xml.ParseXml;
 import com.google.refine.expr.functions.xml.SelectXml;
+import com.google.refine.expr.functions.xml.WholeText;
+import com.google.refine.expr.functions.xml.ScriptText;
 import com.google.refine.expr.functions.xml.XmlAttr;
 import com.google.refine.expr.functions.xml.XmlText;
+import com.google.refine.expr.functions.xml.Parent;
 import com.google.refine.grel.controls.Filter;
 import com.google.refine.grel.controls.ForEach;
 import com.google.refine.grel.controls.ForEachIndex;
@@ -165,26 +174,32 @@ public class ControlFunctionRegistry {
     static public Function getFunction(String name) {
         return s_nameToFunction.get(name);
     }
+
     static public String getFunctionName(Function f) {
         return s_functionToName.get(f);
     }
+
     static public Set<Entry<String, Function>> getFunctionMapping() {
         return s_nameToFunction.entrySet();
     }
-    static public Map<String,Function> getFunctionMap() {
+
+    static public Map<String, Function> getFunctionMap() {
         return Collections.unmodifiableMap(s_nameToFunction);
     }
 
     static public Control getControl(String name) {
         return s_nameToControl.get(name);
     }
+
     static public String getControlName(Control f) {
         return s_controlToName.get(f);
     }
+
     static public Set<Entry<String, Control>> getControlMapping() {
         return s_nameToControl.entrySet();
     }
-    static public Map<String,Control> getControlMap() {
+
+    static public Map<String, Control> getControlMap() {
         return Collections.unmodifiableMap(s_nameToControl);
     }
 
@@ -205,10 +220,13 @@ public class ControlFunctionRegistry {
         registerFunction("toString", new ToString());
         registerFunction("toNumber", new ToNumber());
         registerFunction("toDate", new ToDate());
+        registerFunction("timeSinceUnixEpochToDate", new TimeSinceUnixEpochToDate());
 
         registerFunction("toUppercase", new ToUppercase());
         registerFunction("toLowercase", new ToLowercase());
         registerFunction("toTitlecase", new ToTitlecase());
+
+        registerFunction("detectLanguage", new DetectLanguage());
 
         registerFunction("hasField", new HasField());
         registerFunction("get", new Get());
@@ -216,6 +234,7 @@ public class ControlFunctionRegistry {
         registerFunction("substring", new Slice());
         registerFunction("replace", new Replace());
         registerFunction("replaceChars", new ReplaceChars());
+        registerFunction("replaceEach", new ReplaceEach());
         registerFunction("range", new Range());
         registerFunction("split", new Split());
         registerFunction("smartSplit", new SmartSplit());
@@ -228,6 +247,8 @@ public class ControlFunctionRegistry {
         registerFunction("contains", new Contains());
         registerFunction("escape", new Escape());
         registerFunction("unescape", new Unescape());
+        registerFunction("encode", new Encode());
+        registerFunction("decode", new Decode());
         registerFunction("length", new Length());
         registerFunction("sha1", new SHA1());
         registerFunction("md5", new MD5());
@@ -245,6 +266,8 @@ public class ControlFunctionRegistry {
         registerFunction("match", new Match());
         registerFunction("find", new Find());
 
+        registerFunction("parseUri", new ParseUri());
+
         // XML and HTML functions from JSoup
         registerFunction("parseXml", new ParseXml());
         registerFunction("parseHtml", new ParseHtml());
@@ -256,6 +279,9 @@ public class ControlFunctionRegistry {
         registerFunction("innerXml", new InnerXml());
         registerFunction("innerHtml", new InnerHtml());
         registerFunction("ownText", new OwnText());
+        registerFunction("wholeText", new WholeText());
+        registerFunction("parent", new Parent());
+        registerFunction("scriptText", new ScriptText());
 
         registerFunction("indexOf", new IndexOf());
         registerFunction("lastIndexOf", new LastIndexOf());
@@ -301,6 +327,7 @@ public class ControlFunctionRegistry {
         registerFunction("degrees", new Degrees());
         registerFunction("radians", new Radians());
         registerFunction("randomNumber", new RandomNumber());
+        registerFunction("random", new RandomNumber());
         registerFunction("gcd", new GreatestCommonDenominator());
         registerFunction("lcm", new LeastCommonMultiple());
         registerFunction("multinomial", new Multinomial());
